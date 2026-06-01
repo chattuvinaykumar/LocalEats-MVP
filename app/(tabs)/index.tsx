@@ -31,14 +31,23 @@ export default function HomeScreen() {
   const { addItem } = useCart();
   const { city } = useLocation();
 
-  const featured = restaurants.filter(r => r.featured);
+  const cityRestaurants = restaurants.filter(
+    r => !city || r.city === city
+  );
+
+  const featured = cityRestaurants.filter(r => r.featured);
+
   const filteredPopular = selectedCategory
-    ? restaurants.filter(r => r.tags.includes(selectedCategory) && r.rating >= 4.6).sort((a, b) => b.rating - a.rating)
-    : restaurants.filter(r => r.rating >= 4.6).sort((a, b) => b.rating - a.rating);
+    ? cityRestaurants
+        .filter(r => r.rating >= 4.6)
+        .sort((a, b) => (a.distance || 999) - (b.distance || 999))
+    : cityRestaurants
+        .filter(r => r.rating >= 4.6)
+        .sort((a, b) => (a.distance || 999) - (b.distance || 999));
+
   const popularDishes = menuItems.filter(m => m.popular);
 
   const goToRestaurant = (id: string) => router.push(`/restaurant/${id}`);
-
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
