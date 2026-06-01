@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
-import { ArrowLeft, Star, Clock, MapPin, DollarSign, Minus, Plus, ShoppingBag } from 'lucide-react-native';
+import { ArrowLeft, Star, Clock, MapPin, Minus, Plus, ShoppingBag } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
 import { restaurants, menuItems } from '../../data/mock';
 import { useCart } from '../../context/CartContext';
@@ -48,8 +48,6 @@ export default function RestaurantDetailScreen() {
     );
   }
 
-  const priceDollarCount = restaurant.priceRange.length;
-
   return (
     <View style={styles.root}>
       <Stack.Screen
@@ -85,16 +83,7 @@ export default function RestaurantDetailScreen() {
             <Text style={styles.metaText}>{restaurant.cuisine}</Text>
           </View>
           <View style={styles.priceRow}>
-            <View style={styles.priceRange}>
-              {[1, 2, 3].map(i => (
-                <DollarSign
-                  key={i}
-                  size={14}
-                  strokeWidth={2.5}
-                  color={i <= priceDollarCount ? Colors.primary[500] : Colors.neutral[300]}
-                />
-              ))}
-            </View>
+            <Text style={styles.priceRangeText}>{restaurant.priceRange}</Text>
             <Text style={styles.deliveryFee}>
               Delivery: ₹{restaurant.deliveryFee}
             </Text>
@@ -306,6 +295,12 @@ const styles = StyleSheet.create({
   priceRange: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  priceRangeText: {
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    color: Colors.primary[600],
+    fontFamily: 'Inter-SemiBold',
   },
   deliveryFee: {
     fontSize: FontSizes.sm,
