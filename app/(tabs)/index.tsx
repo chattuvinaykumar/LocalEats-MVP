@@ -17,7 +17,9 @@ import SearchBar from '../../components/SearchBar';
 import SectionHeader from '../../components/SectionHeader';
 import RestaurantCard from '../../components/RestaurantCard';
 import MenuItemCard from '../../components/MenuItemCard';
+import LocationSelectorModal from '../../components/LocationSelectorModal';
 import { useCart } from '../../context/CartContext';
+import { useLocation } from '../../context/LocationContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BANNER_WIDTH = SCREEN_WIDTH - Spacing.lg * 2;
@@ -25,7 +27,9 @@ const BANNER_WIDTH = SCREEN_WIDTH - Spacing.lg * 2;
 export default function HomeScreen() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
   const { addItem } = useCart();
+  const { city } = useLocation();
 
   const featured = restaurants.filter(r => r.featured);
   const filteredPopular = selectedCategory
@@ -41,10 +45,10 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Good evening</Text>
-          <View style={styles.locationRow}>
+          <Pressable style={styles.locationRow} onPress={() => setLocationModalVisible(true)}>
             <MapPin size={16} color={Colors.primary[500]} fill={Colors.primary[500]} />
-            <Text style={styles.deliveryAddress}>123 Main Street</Text>
-          </View>
+            <Text style={styles.deliveryAddress}>{city}</Text>
+          </Pressable>
         </View>
         <Pressable style={styles.bellButton}>
           <Bell size={20} color={Colors.text} strokeWidth={2} />
@@ -163,6 +167,11 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.bottomSpacer} />
+
+      <LocationSelectorModal
+        visible={locationModalVisible}
+        onClose={() => setLocationModalVisible(false)}
+      />
     </ScrollView>
   );
 }
