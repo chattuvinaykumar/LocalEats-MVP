@@ -10,6 +10,7 @@ export interface Restaurant {
   image: string;
   tags: string[];
   featured?: boolean;
+  city: 'Hyderabad' | 'Bengaluru' | 'Chennai' | 'Mumbai';
 }
 
 export interface MenuItem {

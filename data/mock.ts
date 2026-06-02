@@ -41,6 +41,7 @@ export const restaurants: Restaurant[] = [
     image: 'https://images.pexels.com/photos/1624487/pexels-photo-1624487.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Biryani', 'Hyderabadi', 'Non-Veg'],
     featured: true,
+    city: 'Hyderabad',
   },
   {
     id: '2',
@@ -54,6 +55,7 @@ export const restaurants: Restaurant[] = [
     image: 'https://images.pexels.com/photos/2474660/pexels-photo-2474660.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Mughlai', 'North Indian', 'Biryani'],
     featured: true,
+    city: 'Hyderabad',
   },
   {
     id: '3',
@@ -66,6 +68,7 @@ export const restaurants: Restaurant[] = [
     priceRange: 'Budget',
     image: 'https://images.pexels.com/photos/1092730/pexels-photo-1092730.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Dosa', 'Idli', 'South Indian'],
+    city: 'Bengaluru',
   },
   {
     id: '4',
@@ -79,6 +82,7 @@ export const restaurants: Restaurant[] = [
     image: 'https://images.pexels.com/photos/2316904/pexels-photo-2316904.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Biryani', 'Andhra', 'Spicy'],
     featured: true,
+    city: 'Hyderabad',
   },
   {
     id: '5',
@@ -91,6 +95,7 @@ export const restaurants: Restaurant[] = [
     priceRange: 'Mid Range',
     image: 'https://images.pexels.com/photos/2915282/pexels-photo-2915282.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Biryani', 'Haleem', 'Halwa'],
+    city: 'Hyderabad',
   },
   {
     id: '6',
@@ -103,6 +108,7 @@ export const restaurants: Restaurant[] = [
     priceRange: 'Budget',
     image: 'https://images.pexels.com/photos/1092730/pexels-photo-1092730.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Dosa', 'Idli', 'Uttapam'],
+    city: 'Bengaluru',
   },
   {
     id: '7',
@@ -115,6 +121,7 @@ export const restaurants: Restaurant[] = [
     priceRange: 'Mid Range',
     image: 'https://images.pexels.com/photos/1092730/pexels-photo-1092730.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Meals', 'Biryani', 'South Indian'],
+    city: 'Chennai',
   },
   {
     id: '8',
@@ -127,6 +134,7 @@ export const restaurants: Restaurant[] = [
     priceRange: 'Mid Range',
     image: 'https://images.pexels.com/photos/2474660/pexels-photo-2474660.jpeg?auto=compress&cs=tinysrgb&w=600',
     tags: ['Paneer', 'Curry', 'Naan'],
+    city: 'Mumbai',
   },
 ];
 

@@ -31,14 +31,14 @@ export default function HomeScreen() {
   const { addItem } = useCart();
   const { city } = useLocation();
 
-  const featured = restaurants.filter(r => r.featured);
+  const featured = restaurants.filter(r => r.featured && r.city === city);
 
   const filteredPopular = selectedCategory
     ? restaurants
-        .filter(r => r.rating >= 4.6)
+        .filter(r => r.city === city && r.tags.includes(selectedCategory) && r.rating >= 4.6)
         .sort((a, b) => b.rating - a.rating)
     : restaurants
-        .filter(r => r.rating >= 4.6)
+        .filter(r => r.city === city && r.rating >= 4.6)
         .sort((a, b) => b.rating - a.rating);
 
   const popularDishes = menuItems.filter(m => m.popular);
