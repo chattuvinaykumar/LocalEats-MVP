@@ -55,7 +55,7 @@ export default function HomeScreen() {
             <Text style={styles.deliveryAddress}>{city}</Text>
           </Pressable>
         </View>
-        <Pressable style={styles.bellButton}>
+        <Pressable style={styles.bellButton} onPress={() => router.push('/(tabs)/notifications')}>
           <Bell size={20} color={Colors.text} strokeWidth={2} />
           <View style={styles.bellDot} />
         </Pressable>
