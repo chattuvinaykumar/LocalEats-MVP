@@ -31,7 +31,9 @@ export default function HomeScreen() {
   const { addItem } = useCart();
   const { city } = useLocation();
 
-  const featured = restaurants.filter(r => r.featured && r.city === city);
+  const featured = restaurants.filter(r => r.featured && r.city === city).length > 0
+    ? restaurants.filter(r => r.featured && r.city === city)
+    : restaurants.filter(r => r.featured);
 
   const filteredPopular = selectedCategory
     ? restaurants
@@ -39,6 +41,12 @@ export default function HomeScreen() {
         .sort((a, b) => b.rating - a.rating)
     : restaurants
         .filter(r => r.city === city && r.rating >= 4.6)
+        .sort((a, b) => b.rating - a.rating);
+
+  const popular = filteredPopular.length > 0
+    ? filteredPopular
+    : restaurants
+        .filter(r => r.rating >= 4.6)
         .sort((a, b) => b.rating - a.rating);
 
   const popularDishes = menuItems.filter(m => m.popular);
@@ -156,7 +164,7 @@ export default function HomeScreen() {
             <Text style={styles.sectionAction}>See all</Text>
           </Pressable>
         </View>
-        {filteredPopular.map(r => (
+        {popular.map(r => (
           <RestaurantCard key={r.id} restaurant={r} onPress={goToRestaurant} />
         ))}
       </View>
