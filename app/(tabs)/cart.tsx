@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
-import { ShoppingBag, Trash2 } from 'lucide-react-native';
+import { ShoppingBag, Trash2, ArrowLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
 import CartItemRow from '../../components/CartItemRow';
@@ -24,6 +24,9 @@ export default function CartScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <ArrowLeft size={24} color={Colors.text} strokeWidth={2} />
+        </Pressable>
         <Text style={styles.headerTitle}>Your Cart</Text>
         <Text style={styles.headerCount}>{totalItems} items</Text>
       </View>
@@ -79,17 +82,24 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.sm,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: FontSizes.xxl,
     fontWeight: '700',
     color: Colors.text,
     fontFamily: 'Inter-Bold',
+    flex: 1,
   },
   headerCount: {
     fontSize: FontSizes.md,
