@@ -97,7 +97,7 @@ export default function HomeScreen() {
 
       {/* Categories */}
       <View style={styles.section}>
-        <SectionHeader title="Categories" actionText="See all" />
+        <SectionHeader title="Categories" />
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
