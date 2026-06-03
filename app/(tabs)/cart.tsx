@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { ShoppingBag, Trash2 } from 'lucide-react-native';
+import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
 import CartItemRow from '../../components/CartItemRow';
 import { useCart } from '../../context/CartContext';
@@ -58,7 +59,7 @@ export default function CartScreen() {
           <Text style={styles.totalValue}>₹{total}</Text>
         </View>
 
-        <Pressable style={styles.checkoutButton}>
+        <Pressable style={styles.checkoutButton} onPress={() => router.push('/delivery-partner')}>
           <Text style={styles.checkoutText}>Place Order - ₹{total}</Text>
         </Pressable>
 
