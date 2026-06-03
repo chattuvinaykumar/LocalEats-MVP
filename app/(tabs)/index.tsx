@@ -137,7 +137,7 @@ export default function HomeScreen() {
             <Sparkles size={18} color={Colors.primary[500]} strokeWidth={2} />
             <Text style={styles.sectionTitle}>Featured</Text>
           </View>
-          <Pressable>
+          <Pressable onPress={() => router.push('/featured-restaurants')}>
             <Text style={styles.sectionAction}>See all</Text>
           </Pressable>
         </View>
@@ -160,7 +160,7 @@ export default function HomeScreen() {
             <TrendingUp size={18} color={Colors.primary[500]} strokeWidth={2} />
             <Text style={styles.sectionTitle}>Popular near you</Text>
           </View>
-          <Pressable>
+          <Pressable onPress={() => router.push('/popular-restaurants')}>
             <Text style={styles.sectionAction}>See all</Text>
           </Pressable>
         </View>
@@ -171,7 +171,7 @@ export default function HomeScreen() {
 
       {/* Popular Dishes */}
       <View style={styles.section}>
-        <SectionHeader title="Trending dishes" actionText="See all" />
+        <SectionHeader title="Trending dishes" actionText="See all" onAction={() => router.push('/trending-dishes')} />
         <View style={styles.dishesSection}>
           {popularDishes.slice(0, 4).map(item => (
             <MenuItemCard key={item.id} item={item} onAdd={addItem} />
