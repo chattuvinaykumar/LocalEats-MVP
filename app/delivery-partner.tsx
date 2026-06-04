@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, Truck } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../constants/theme';
 import { useCart } from '../context/CartContext';
+import { useNotifications } from '../context/NotificationsContext';
 
 interface DeliveryOption {
   id: string;
@@ -45,14 +46,13 @@ export default function DeliveryPartnerScreen() {
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const { clearCart } = useCart();
+  const { addNotification } = useNotifications();
 
   const handleConfirm = () => {
     if (selectedPartner) {
+      clearCart();
+      addNotification('Order Confirmed', 'Your order has been placed successfully.');
       setConfirmed(true);
-      setTimeout(() => {
-        clearCart();
-        router.replace('/(tabs)');
-      }, 2000);
     }
   };
 
@@ -71,6 +71,9 @@ export default function DeliveryPartnerScreen() {
           <Text style={styles.confirmSubtitle}>
             Estimated delivery in {partner?.minTime}-{partner?.maxTime} minutes
           </Text>
+          <Pressable style={styles.homeButton} onPress={() => router.replace('/(tabs)')}>
+            <Text style={styles.homeButtonText}>Back to Home</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -307,5 +310,18 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
+  },
+  homeButton: {
+    marginTop: Spacing.xl,
+    backgroundColor: Colors.primary[500],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xxl,
+    borderRadius: BorderRadius.lg,
+  },
+  homeButtonText: {
+    fontSize: FontSizes.md,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Inter-Bold',
   },
 });

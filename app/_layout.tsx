@@ -10,6 +10,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { CartProvider } from '@/context/CartContext';
 import { LocationProvider } from '@/context/LocationContext';
+import { NotificationsProvider } from '@/context/NotificationsContext';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 
 SplashScreen.preventAutoHideAsync();
@@ -35,6 +36,7 @@ export default function RootLayout() {
 
   return (
     <LocationProvider>
+      <NotificationsProvider>
       <CartProvider>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -43,6 +45,7 @@ export default function RootLayout() {
         </Stack>
         <StatusBar style="dark" />
       </CartProvider>
+      </NotificationsProvider>
     </LocationProvider>
   );
 }

@@ -3,46 +3,11 @@ import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { ArrowLeft, Bell } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
-
-const NOTIFICATIONS = [
-  {
-    id: '1',
-    title: 'Order delivered successfully',
-    message: 'Your order from Paradise Biryani has been delivered',
-    timestamp: '2 hours ago',
-    read: false,
-  },
-  {
-    id: '2',
-    title: '20% off on Biryani this weekend',
-    message: 'Get special discounts on all biryani orders',
-    timestamp: '5 hours ago',
-    read: false,
-  },
-  {
-    id: '3',
-    title: 'Free delivery available in your area',
-    message: 'Free delivery on orders above ₹199',
-    timestamp: '1 day ago',
-    read: true,
-  },
-  {
-    id: '4',
-    title: 'Welcome to LocalEats',
-    message: 'Start ordering from your favorite restaurants',
-    timestamp: '3 days ago',
-    read: true,
-  },
-  {
-    id: '5',
-    title: 'New restaurants added near you',
-    message: 'Check out 5 new restaurants in your area',
-    timestamp: '1 week ago',
-    read: true,
-  },
-];
+import { useNotifications } from '../../context/NotificationsContext';
 
 export default function NotificationsScreen() {
+  const { notifications } = useNotifications();
+
   return (
     <View style={styles.root}>
       {/* Header */}
@@ -55,7 +20,7 @@ export default function NotificationsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
-        {NOTIFICATIONS.map(notif => (
+        {notifications.map(notif => (
           <View
             key={notif.id}
             style={[styles.notificationCard, !notif.read && styles.notificationCardUnread]}>
