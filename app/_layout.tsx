@@ -9,6 +9,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { CartProvider } from '@/context/CartContext';
+import { AuthProvider } from '@/context/AuthContext';
 import { LocationProvider } from '@/context/LocationContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
@@ -35,6 +36,7 @@ export default function RootLayout() {
   }
 
   return (
+    <AuthProvider>
     <LocationProvider>
       <NotificationsProvider>
       <CartProvider>
@@ -42,10 +44,12 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="restaurant/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="+not-found" />
+          <Stack.Screen name="auth" options={{ presentation: 'modal' }} />
         </Stack>
         <StatusBar style="dark" />
       </CartProvider>
       </NotificationsProvider>
     </LocationProvider>
+    </AuthProvider>
   );
 }

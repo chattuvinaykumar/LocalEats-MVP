@@ -10,8 +10,11 @@ import {
   ChevronRight,
   Heart,
   Clock,
+  LogIn,
 } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
+import { useAuth } from '../../context/AuthContext';
+import { router } from 'expo-router';
 
 interface ProfileMenuItem {
   icon: React.ReactNode;
@@ -57,6 +60,17 @@ const menuItems: ProfileMenuItem[] = [
 ];
 
 export default function ProfileScreen() {
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  const filteredMenuItems = menuItems.filter(item => {
+    if (item.label === 'Sign out') return !!user;
+    return true;
+  });
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Profile Header */}
@@ -64,38 +78,66 @@ export default function ProfileScreen() {
         <View style={styles.avatar}>
           <User size={36} color={Colors.primary[500]} strokeWidth={1.5} />
         </View>
-        <View style={styles.profileInfo}>
-          <Text style={styles.profileName}>Alex Johnson</Text>
-          <Text style={styles.profileEmail}>alex.johnson@email.com</Text>
-        </View>
+        {user ? (
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>{user.user_metadata?.full_name || 'User'}</Text>
+            <Text style={styles.profileEmail}>{user.email}</Text>
+          </View>
+        ) : (
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>Guest User</Text>
+            <Pressable onPress={() => router.push('/auth/login')}>
+              <Text style={styles.loginLink}>Sign in to your account</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>12</Text>
-          <Text style={styles.statLabel}>Orders</Text>
+      {/* Auth Prompt for Guests */}
+      {!user && (
+        <View style={styles.authPrompt}>
+          <View style={styles.authPromptContent}>
+            <LogIn size={24} color={Colors.primary[500]} />
+            <View style={styles.authPromptText}>
+              <Text style={styles.authPromptTitle}>Unlock all features</Text>
+              <Text style={styles.authPromptSubtitle}>Sign in to track orders and save favorites</Text>
+            </View>
+          </View>
+          <Pressable style={styles.loginButton} onPress={() => router.push('/auth/login')}>
+            <Text style={styles.loginButtonText}>Login / Signup</Text>
+          </Pressable>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>8</Text>
-          <Text style={styles.statLabel}>Favorites</Text>
+      )}
+
+      {/* Stats - Only show for authenticated users */}
+      {user && (
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>12</Text>
+            <Text style={styles.statLabel}>Orders</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>8</Text>
+            <Text style={styles.statLabel}>Favorites</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>$24</Text>
+            <Text style={styles.statLabel}>Saved</Text>
+          </View>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>$24</Text>
-          <Text style={styles.statLabel}>Saved</Text>
-        </View>
-      </View>
+      )}
 
       {/* Menu */}
       <View style={styles.menuSection}>
-        {menuItems.map((item, index) => (
+        {filteredMenuItems.map((item, index) => (
           <Pressable
             key={item.label}
+            onPress={item.label === 'Sign out' ? handleSignOut : undefined}
             style={[
               styles.menuItem,
-              index === menuItems.length - 1 && styles.menuItemLast,
+              index === filteredMenuItems.length - 1 && styles.menuItemLast,
             ]}>
             <View style={styles.menuLeft}>
               <View style={[styles.menuIcon, item.destructive && styles.menuIconDestructive]}>
@@ -164,6 +206,54 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontFamily: 'Inter-Regular',
     marginTop: 2,
+  },
+  loginLink: {
+    fontSize: FontSizes.md,
+    color: Colors.primary[500],
+    fontFamily: 'Inter-SemiBold',
+    marginTop: 2,
+  },
+  authPrompt: {
+    backgroundColor: Colors.background,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary[100],
+    ...Shadows.sm,
+  },
+  authPromptContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  authPromptText: {
+    flex: 1,
+  },
+  authPromptTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: '700',
+    color: Colors.text,
+    fontFamily: 'Inter-Bold',
+  },
+  authPromptSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    fontFamily: 'Inter-Regular',
+  },
+  loginButton: {
+    backgroundColor: Colors.primary[500],
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: FontSizes.md,
+    fontWeight: '700',
+    fontFamily: 'Inter-Bold',
   },
   statsRow: {
     flexDirection: 'row',
