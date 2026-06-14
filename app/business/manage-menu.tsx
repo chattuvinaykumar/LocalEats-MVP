@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Image, Alert, ActivityIndicator } from 'react-native';
-import { ArrowLeft, ChefHat, Plus, Check, Trash2, Tag, Utensils, DollarSign, Sparkles } from 'lucide-react-native';
+import { ArrowLeft, ChefHat, Plus, Check, Trash2, Tag, Utensils, Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
@@ -184,7 +184,7 @@ export default function ManageMenuScreen() {
               <View style={{ flex: 1.1, marginRight: Spacing.md }}>
                 <Text style={styles.label}>Price (₹)</Text>
                 <View style={styles.inputWrap}>
-                  <DollarSign size={18} color={Colors.neutral[400]} style={styles.inputIcon} />
+                  <Text style={{ marginRight: 8, color: Colors.neutral[400] }}>₹</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="250"

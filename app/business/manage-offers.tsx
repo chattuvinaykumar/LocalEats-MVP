@@ -6,6 +6,7 @@ import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constan
 import { useAuth } from '../../context/AuthContext';
 import { getOwnedRestaurant, getOffers, createOffer, updateOffer, deleteOffer } from '../../lib/business';
 import { Restaurant, Offer } from '../../types';
+import * as ImagePicker from 'expo-image-picker';
 
 const PRESET_BANNER_IMAGES = [
   'https://images.pexels.com/photos/1624487/pexels-photo-1624487.jpeg?auto=compress&cs=tinysrgb&w=600', // Spicy Biryani
@@ -14,11 +15,16 @@ const PRESET_BANNER_IMAGES = [
   'https://images.pexels.com/photos/2915282/pexels-photo-2915282.jpeg?auto=compress&cs=tinysrgb&w=600', // Sweet desserts/treats
 ];
 
+const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+
 export default function ManageOffersScreen() {
   const { user } = useAuth();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const defaultStartDate = formatDate(new Date());
+  const defaultEndDate = formatDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
 
   // Form states
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -27,9 +33,31 @@ export default function ManageOffersScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [discountPercentage, setDiscountPercentage] = useState('');
-  const [startDate, setStartDate] = useState('2026-06-11');
-  const [endDate, setEndDate] = useState('2026-12-31');
+  const [startDate, setStartDate] = useState(defaultStartDate);
+  const [endDate, setEndDate] = useState(defaultEndDate);
   const [bannerImage, setBannerImage] = useState(PRESET_BANNER_IMAGES[0]);
+  const pickBannerImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        if (asset.base64) {
+          setBannerImage(`data:image/jpeg;base64,${asset.base64}`);
+        } else if (asset.uri) {
+          setBannerImage(asset.uri);
+        }
+      }
+    } catch (error) {
+      console.error('Image picker failed:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
   const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
@@ -60,12 +88,20 @@ export default function ManageOffersScreen() {
     setTitle('');
     setDescription('');
     setDiscountPercentage('');
-    setStartDate('2026-06-11');
-    setEndDate('2026-12-31');
+    setStartDate(defaultStartDate);
+    setEndDate(defaultEndDate);
     setBannerImage(PRESET_BANNER_IMAGES[Math.floor(Math.random() * PRESET_BANNER_IMAGES.length)]);
     setIsActive(true);
     setEditingOfferId(null);
     setIsFormVisible(true);
+  };
+
+  const handleBackAction = () => {
+    if (isFormVisible) {
+      setIsFormVisible(false);
+    } else {
+      router.replace('/business/dashboard');
+    }
   };
 
   const handleOpenEditForm = (offer: Offer) => {
@@ -156,14 +192,16 @@ export default function ManageOffersScreen() {
           text: 'Delete', 
           style: 'destructive',
           onPress: async () => {
+            const removedOffers = offers.filter(o => o.id !== offerId);
+            setOffers(removedOffers);
             try {
               setLoading(true);
               await deleteOffer(restaurant.id, offerId);
-              const loadedOffers = await getOffers(restaurant.id);
-              setOffers(loadedOffers);
               Alert.alert('Deleted', 'Promotion offer was removed.');
             } catch (err) {
-              Alert.alert('Error', 'Deletion failed.');
+              Alert.alert('Error', 'Deletion failed. Please try again.');
+              const reloadedOffers = await getOffers(restaurant.id);
+              setOffers(reloadedOffers);
             } finally {
               setLoading(false);
             }
@@ -190,13 +228,11 @@ export default function ManageOffersScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => {
-          if (isFormVisible) {
-            setIsFormVisible(false);
-          } else {
-            router.back();
-          }
-        }}>
+        <Pressable
+          style={styles.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          onPress={handleBackAction}
+        >
           <ArrowLeft size={22} color={Colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>
@@ -299,6 +335,12 @@ export default function ManageOffersScreen() {
                     </View>
                   </View>
                 )}
+                <Pressable
+                  style={styles.galleryButton}
+                  onPress={pickBannerImage}
+                >
+                  <Text style={styles.galleryButtonText}>Choose Offer Image From Gallery</Text>
+                </Pressable>
               </View>
             </View>
 
@@ -820,6 +862,21 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     fontFamily: 'Inter-Regular',
     marginTop: 1,
+  },
+  galleryButton: {
+    backgroundColor: Colors.primary[500],
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  galleryButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: FontSizes.sm,
+    fontFamily: 'Inter-Bold',
   },
   saveBtn: {
     flexDirection: 'row',

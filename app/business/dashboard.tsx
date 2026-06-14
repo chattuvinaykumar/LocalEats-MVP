@@ -7,12 +7,13 @@ import {
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
-import { 
+import {
   getOwnedRestaurant, 
   getBusinessOrders, 
   getBusinessMenuItems, 
   updateBusinessOrderStatus, 
-  addSimulatedOrder, 
+  addSimulatedOrder,
+  deleteOwnedRestaurant,
   MerchantOrder 
 } from '../../lib/business';
 import { Restaurant, MenuItem } from '../../types';
@@ -68,6 +69,8 @@ export default function BusinessDashboardScreen() {
     }
   };
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleSimulateOrder = async () => {
     if (!restaurant) return;
     setSimulating(true);
@@ -80,6 +83,47 @@ export default function BusinessDashboardScreen() {
     } finally {
       setSimulating(false);
     }
+  };
+
+  const handleDeleteRestaurant = () => {
+    if (!user || !restaurant) return;
+
+    Alert.alert(
+      'Confirm Delete',
+      'Are you sure you want to permanently delete this restaurant?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              await deleteOwnedRestaurant(user.id, restaurant.id);
+              setRestaurant(null);
+              setOrders([]);
+              setMenuItems([]);
+              Alert.alert(
+                'Restaurant Deleted',
+                'Your restaurant has been permanently removed.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => router.replace('/business/register')
+                  }
+                ],
+                { cancelable: false }
+              );
+            } catch (err: any) {
+              console.error('Restaurant deletion failed:', err);
+              Alert.alert('Deletion Failed', String(err?.message || err));
+            } finally {
+              setIsDeleting(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (loading) {
@@ -349,14 +393,31 @@ export default function BusinessDashboardScreen() {
             style={styles.editBtn}
             onPress={() => router.push('/business/register')}>
             <Settings size={18} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.editBtnText}>Update Store Profile</Text>
+            <Text style={styles.editBtnText}>Edit Store Details</Text>
           </Pressable>
+
+          <Pressable
+            accessible={true}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.deleteBtn,
+              pressed && styles.deleteBtnPressed,
+              isDeleting && styles.deleteBtnDisabled,
+            ]}
+            onPress={handleDeleteRestaurant}
+            disabled={isDeleting}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Trash2 size={18} color={Colors.error} style={{ marginRight: 8 }} />
+            <Text selectable={false} style={styles.deleteBtnText}>Delete Restaurant</Text>
+          </Pressable>
+
+          <Text selectable={false} style={styles.deleteWarning}>This action cannot be undone.</Text>
         </ScrollView>
       )}
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -817,6 +878,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  deleteBtn: {
+    width: '100%',
+    backgroundColor: 'rgba(244,67,54,0.12)',
+    borderColor: 'rgba(244,67,54,0.9)',
+    borderWidth: 1,
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#f44336',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  deleteBtnPressed: {
+    opacity: 0.85,
+  },
+  deleteBtnDisabled: {
+    opacity: 0.65,
+  },
+  deleteBtnText: {
+    color: Colors.error,
+    fontWeight: '700',
+    fontSize: FontSizes.md,
+  },
+  deleteWarning: {
+    marginTop: Spacing.xs,
+    color: Colors.error,
+    fontSize: FontSizes.xs,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
   },
   editBtnText: {
     color: '#fff',

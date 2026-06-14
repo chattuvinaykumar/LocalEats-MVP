@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Restaurant, MenuItem, CartItem } from '../types';
+import { Restaurant, MenuItem, CartItem, Offer } from '../types';
 
 // Let's create an in-memory or localStorage cache for mock data to persist business actions in preview mode.
 const LOCAL_STORAGE_RESTAURANT_KEY = 'localeats_owned_restaurant_';
@@ -81,7 +81,7 @@ export async function getOwnedRestaurant(userId: string): Promise<Restaurant | n
           cuisine: data.cuisine,
           rating: Number(data.rating || 5.0),
           reviewCount: data.review_count || 0,
-          deliveryTime: data.delivery_time || '20-30',
+          deliveryTime: data.delivery_time || 'N/A',
           deliveryFee: Number(data.delivery_fee || 0),
           priceRange: data.price_range || 'Mid Range',
           image: data.image,
@@ -150,6 +150,36 @@ export async function saveOwnedRestaurant(
   }
 
   return completeRestaurant;
+}
+
+export async function deleteOwnedRestaurant(userId: string, restaurantId: string): Promise<void> {
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    localStorage.removeItem(`${LOCAL_STORAGE_RESTAURANT_KEY}${userId}`);
+    localStorage.removeItem(`${LOCAL_STORAGE_MENU_ITEMS_KEY}${restaurantId}`);
+    localStorage.removeItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`);
+    localStorage.removeItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`);
+  }
+
+  const errors: string[] = [];
+
+  const offerDelete = await supabase.from('offers').delete().eq('restaurant_id', restaurantId);
+  if (offerDelete.error) errors.push(`offers: ${offerDelete.error.message}`);
+
+  const menuDelete = await supabase.from('menu_items').delete().eq('restaurant_id', restaurantId);
+  if (menuDelete.error) errors.push(`menu_items: ${menuDelete.error.message}`);
+
+  // Restaurant deletions cascade to orders and order_items via foreign key constraints.
+  const restaurantDelete = await supabase.from('restaurants').delete().eq('id', restaurantId);
+  if (restaurantDelete.error) errors.push(`restaurants: ${restaurantDelete.error.message}`);
+
+  const authUpdate = await supabase.auth.updateUser({ data: { owned_restaurant_id: null } });
+  if (authUpdate.error) errors.push(`auth: ${authUpdate.error.message}`);
+
+  if (errors.length > 0) {
+    const combined = errors.join(' | ');
+    console.warn('Supabase deleteOwnedRestaurant encountered errors:', combined);
+    throw new Error(combined);
+  }
 }
 
 // Get menu items for an owned restaurant
@@ -249,6 +279,18 @@ export async function deleteBusinessMenuItem(restaurantId: string, itemId: strin
 
 // Get merchant orders
 export async function getBusinessOrders(restaurantId: string): Promise<MerchantOrder[]> {
+  let localOrders: MerchantOrder[] | null = null;
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`);
+    if (stored) {
+      try {
+        localOrders = JSON.parse(stored);
+      } catch {
+        localOrders = null;
+      }
+    }
+  }
+
   try {
     // 1. Try querying Supabase first
     const { data: ordersData, error: ordersError } = await supabase
@@ -257,7 +299,11 @@ export async function getBusinessOrders(restaurantId: string): Promise<MerchantO
       .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
 
-    if (ordersData && !ordersError && ordersData.length > 0) {
+    if (ordersData && !ordersError) {
+      if (ordersData.length === 0 && localOrders) {
+        return localOrders;
+      }
+
       const orderIds = ordersData.map(o => o.id);
       const { data: itemsData, error: itemsError } = await supabase
         .from('order_items')
@@ -294,12 +340,8 @@ export async function getBusinessOrders(restaurantId: string): Promise<MerchantO
     console.warn("Supabase getBusinessOrders failed, trying local storage:", err);
   }
 
-  // Fallback to local storage
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`);
-    if (stored) {
-      return JSON.parse(stored);
-    }
+  if (localOrders) {
+    return localOrders;
   }
 
   // Seed default orders to make empty state feel interactive & gorgeous!
@@ -568,6 +610,18 @@ export async function placeOrder(
 
 // Customers can get their orders
 export async function getCustomerOrders(userId: string): Promise<any[]> {
+  let localOrders: any[] | null = null;
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem(`${LOCAL_STORAGE_CUSTOMER_ORDERS_KEY}${userId}`);
+    if (stored) {
+      try {
+        localOrders = JSON.parse(stored);
+      } catch {
+        localOrders = null;
+      }
+    }
+  }
+
   try {
     // Try fetching from Supabase
     const { data: ordersData, error: ordersError } = await supabase
@@ -576,7 +630,11 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (ordersData && !ordersError && ordersData.length > 0) {
+    if (ordersData && !ordersError) {
+      if (ordersData.length === 0 && localOrders) {
+        return localOrders;
+      }
+
       const orderIds = ordersData.map(o => o.id);
       const { data: itemsData, error: itemsError } = await supabase
         .from('order_items')
@@ -615,12 +673,8 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
     console.warn("Supabase getCustomerOrders failed, trying local storage:", err);
   }
 
-  // Fallback to local storage
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(`${LOCAL_STORAGE_CUSTOMER_ORDERS_KEY}${userId}`);
-    if (stored) {
-      return JSON.parse(stored);
-    }
+  if (localOrders) {
+    return localOrders;
   }
 
   return [];
@@ -630,6 +684,18 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
 const LOCAL_STORAGE_OFFERS_KEY = 'localeats_offers_';
 
 export async function getOffers(restaurantId: string): Promise<Offer[]> {
+  let localOffers: Offer[] | null = null;
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`);
+    if (stored) {
+      try {
+        localOffers = JSON.parse(stored);
+      } catch {
+        localOffers = null;
+      }
+    }
+  }
+
   try {
     const { data, error } = await supabase
       .from('offers')
@@ -638,7 +704,7 @@ export async function getOffers(restaurantId: string): Promise<Offer[]> {
       .order('created_at', { ascending: false });
 
     if (data && !error) {
-      return data.map(o => ({
+      const mapped = data.map(o => ({
         id: o.id,
         restaurantId: o.restaurant_id,
         title: o.title,
@@ -650,17 +716,33 @@ export async function getOffers(restaurantId: string): Promise<Offer[]> {
         isActive: o.is_active,
         createdAt: o.created_at
       }));
+
+      if (localOffers && localOffers.length > 0) {
+        const existingIds = new Set(mapped.map(o => o.id));
+        const merged = [...mapped];
+        localOffers.forEach(local => {
+          if (!existingIds.has(local.id)) {
+            merged.push({ ...local, createdAt: local.createdAt ?? new Date().toISOString() });
+          }
+        });
+        if (merged.length > 0) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`, JSON.stringify(merged));
+          }
+        }
+        return merged;
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`, JSON.stringify(mapped));
+      }
+      return mapped;
     }
   } catch (err) {
     console.warn("Supabase getOffers failed, using local storage:", err);
   }
 
-  // fallback to local storage
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`);
-    if (stored) {
-      return JSON.parse(stored);
-    }
+  if (localOffers) {
+    return localOffers;
   }
   return [];
 }
@@ -753,9 +835,12 @@ export async function deleteOffer(restaurantId: string, offerId: string): Promis
   }
 
   try {
-    await supabase.from('offers').delete().eq('id', offerId);
+    const { error } = await supabase.from('offers').delete().eq('id', offerId);
+    if (error) {
+      console.warn('Supabase deleteOffer failed:', error.message);
+    }
   } catch (err) {
-    console.warn("Supabase deleteOffer failed:", err);
+    console.warn('Supabase deleteOffer failed:', err);
   }
 }
 

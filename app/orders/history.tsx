@@ -72,8 +72,8 @@ export default function OrderHistoryScreen() {
                     {new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} • {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 </View>
-                <View style={[styles.statusBadge, styles[`status_${order.status}` as keyof typeof styles]]}>
-                  <Text style={[styles.statusText, styles[`statusText_${order.status}` as keyof typeof styles]]}>
+                <View style={[styles.statusBadge, styles[`status_${order.status}` as keyof typeof styles] as any]}>
+                  <Text style={[styles.statusText, styles[`statusText_${order.status}` as keyof typeof styles] as any]}>
                     {order.status.toUpperCase()}
                   </Text>
                 </View>

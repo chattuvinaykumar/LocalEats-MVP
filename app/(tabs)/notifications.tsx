@@ -6,7 +6,7 @@ import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constan
 import { useNotifications } from '../../context/NotificationsContext';
 
 export default function NotificationsScreen() {
-  const { notifications } = useNotifications();
+  const { notifications, markAsRead, clearAll } = useNotifications();
 
   return (
     <View style={styles.root}>
@@ -16,24 +16,37 @@ export default function NotificationsScreen() {
           <ArrowLeft size={24} color={Colors.text} strokeWidth={2} />
         </Pressable>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <View style={{ width: 24 }} />
+        <Pressable onPress={clearAll} style={styles.headerAction}>
+          <Text style={styles.headerActionText}>Clear all</Text>
+        </Pressable>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
-        {notifications.map(notif => (
-          <View
-            key={notif.id}
-            style={[styles.notificationCard, !notif.read && styles.notificationCardUnread]}>
-            <View style={styles.notificationIcon}>
-              <Bell size={20} color={Colors.primary[500]} strokeWidth={2} />
-            </View>
-            <View style={styles.notificationContent}>
-              <Text style={styles.notificationTitle}>{notif.title}</Text>
-              <Text style={styles.notificationMessage}>{notif.message}</Text>
-              <Text style={styles.notificationTime}>{notif.timestamp}</Text>
-            </View>
+        {notifications.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No notifications yet.</Text>
+            <Text style={styles.emptySubtext}>Any new updates will appear here.</Text>
           </View>
-        ))}
+        ) : (
+          notifications.map(notif => (
+            <Pressable
+              key={notif.id}
+              style={[styles.notificationCard, !notif.read && styles.notificationCardUnread]}
+              onPress={() => {
+                markAsRead(notif.id);
+                alert(`${notif.title}\n\n${notif.message}`);
+              }}>
+              <View style={styles.notificationIcon}>
+                <Bell size={20} color={Colors.primary[500]} strokeWidth={2} />
+              </View>
+              <View style={styles.notificationContent}>
+                <Text style={styles.notificationTitle}>{notif.title}</Text>
+                <Text style={styles.notificationMessage}>{notif.message}</Text>
+                <Text style={styles.notificationTime}>{notif.timestamp}</Text>
+              </View>
+            </Pressable>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -107,5 +120,36 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.textSecondary,
     fontFamily: 'Inter-Regular',
+  },
+  headerAction: {
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.neutral[100],
+  },
+  headerActionText: {
+    color: Colors.primary[600],
+    fontSize: FontSizes.xs,
+    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+  },
+  emptyState: {
+    marginTop: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  emptyText: {
+    fontSize: FontSizes.md,
+    fontWeight: '600',
+    color: Colors.text,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: Spacing.xs,
+  },
+  emptySubtext: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
   },
 });

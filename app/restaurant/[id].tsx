@@ -46,7 +46,7 @@ export default function RestaurantDetailScreen() {
     return cats;
   }, [items]);
 
-  const [activeCategory, setActiveCategory] = useState<string | categories[0]>(
+  const [activeCategory, setActiveCategory] = useState<string>(
     categories[0] ?? ''
   );
 

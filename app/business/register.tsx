@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Image, Alert } from 'react-native';
-import { ArrowLeft, Store, MapPin, DollarSign, Clock, Check, Layers } from 'lucide-react-native';
+import { ArrowLeft, Store, MapPin, Clock, Check, Layers } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
-import { saveOwnedRestaurant, CURATED_FOOD_IMAGES } from '../../lib/business';
-
+import { saveOwnedRestaurant, CURATED_FOOD_IMAGES, getOwnedRestaurant } from '../../lib/business';
+import * as ImagePicker from 'expo-image-picker';
 export default function BusinessRegisterScreen() {
   const { user } = useAuth();
   const [name, setName] = useState('');
@@ -17,7 +17,48 @@ export default function BusinessRegisterScreen() {
   const [tagsInput, setTagsInput] = useState('');
   const [selectedImage, setSelectedImage] = useState(CURATED_FOOD_IMAGES[0].url);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [existingRestaurantId, setExistingRestaurantId] = useState<string | null>(null);
+  const [existingRestaurantRating, setExistingRestaurantRating] = useState<number>(5);
+  const [existingRestaurantReviewCount, setExistingRestaurantReviewCount] = useState<number>(1);
+  const [headerTitle, setHeaderTitle] = useState('Register Restaurant');
 
+  useEffect(() => {
+    const loadExistingRestaurant = async () => {
+      if (!user) return;
+      const existing = await getOwnedRestaurant(user.id);
+      if (!existing) return;
+      setExistingRestaurantId(existing.id);
+      setHeaderTitle('Edit Store Details');
+      setName(existing.name);
+      setCuisine(existing.cuisine);
+      setPriceRange(['Budget', 'Mid Range', 'Premium'].includes(existing.priceRange) ? existing.priceRange as 'Budget' | 'Mid Range' | 'Premium' : 'Mid Range');
+      setDeliveryTime(existing.deliveryTime);
+      setDeliveryFee(existing.deliveryFee.toString());
+      setCity(existing.city);
+      setTagsInput(existing.tags.join(', '));
+      setSelectedImage(existing.image || CURATED_FOOD_IMAGES[0].url);
+      setExistingRestaurantRating(existing.rating ?? 5);
+      setExistingRestaurantReviewCount(existing.reviewCount ?? 1);
+    };
+
+    loadExistingRestaurant();
+  }, [user]);
+
+const pickImage = async () => {
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  } catch (error) {
+    Alert.alert('Error', 'Failed to pick image');
+  }
+};
   const handleRegister = async () => {
     if (!user) {
       Alert.alert('Error', 'You must be logged in to register a business.');
@@ -34,6 +75,11 @@ export default function BusinessRegisterScreen() {
       return;
     }
 
+    if (!deliveryTime.trim()) {
+      Alert.alert('Missing Field', 'Please enter your average delivery time range for the restaurant.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // Split tags comma separated
@@ -46,24 +92,27 @@ export default function BusinessRegisterScreen() {
         tags.push('Restaurant', cuisine.trim());
       }
 
-      const newId = `rest-${user.id.substring(0, 5)}-${Date.now().toString().slice(-4)}`;
-
+      const restaurantId = existingRestaurantId ?? `rest-${user.id.substring(0, 5)}-${Date.now().toString().slice(-4)}`;
       await saveOwnedRestaurant(user.id, {
-        id: newId,
+        id: restaurantId,
         name: name.trim(),
         cuisine: cuisine.trim(),
-        deliveryTime: deliveryTime.trim() || '20-30',
+        deliveryTime: deliveryTime.trim(),
         deliveryFee: Number(deliveryFee) || 0,
         priceRange,
         image: selectedImage,
         tags,
         city,
-        featured: true
+        featured: true,
+        rating: existingRestaurantRating,
+        reviewCount: existingRestaurantReviewCount,
       });
 
       Alert.alert(
-        'Success!',
-        'Your business has been registered successfully. Welcome to LocalEats Merchant network!',
+        existingRestaurantId ? 'Updated!' : 'Success!',
+        existingRestaurantId
+          ? 'Your business profile has been updated successfully.'
+          : 'Your business has been registered successfully. Welcome to LocalEats Merchant network!',
         [
           { 
             text: 'Launch Dashboard', 
@@ -72,7 +121,7 @@ export default function BusinessRegisterScreen() {
         ]
       );
     } catch (e: any) {
-      Alert.alert('Registration Failed', e.message || 'An error occurred. Please try again.');
+      Alert.alert(existingRestaurantId ? 'Update Failed' : 'Registration Failed', e.message || 'An error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -85,7 +134,7 @@ export default function BusinessRegisterScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <ArrowLeft size={24} color={Colors.text} strokeWidth={2} />
         </Pressable>
-        <Text style={styles.headerTitle}>Register Restaurant</Text>
+        <Text style={styles.headerTitle}>{headerTitle}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -167,7 +216,7 @@ export default function BusinessRegisterScreen() {
             <View style={{ flex: 1, marginRight: Spacing.md }}>
               <Text style={styles.label}>Delivery Fee (₹)</Text>
               <View style={styles.inputContainer}>
-                <DollarSign size={18} color={Colors.neutral[400]} style={styles.inputIcon} />
+                <Text style={{ marginRight: 8, color: Colors.neutral[400] }}>₹</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="40"
@@ -226,10 +275,24 @@ export default function BusinessRegisterScreen() {
                     <Check size={16} color="#fff" strokeWidth={3} />
                   </View>
                 )}
-                <Text style={styles.imageName} numberOfLines={1}>{img.name}</Text>
+                 <Text style={styles.imageName} numberOfLines={1}>{img.name}</Text>
               </Pressable>
             ))}
-          </View>
+          <Pressable
+  style={{
+    backgroundColor: Colors.primary[500],
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 12,
+  }}
+  onPress={pickImage}
+>
+  <Text style={{ color: '#fff', fontWeight: '600' }}>
+    Choose Image From Gallery
+  </Text>
+</Pressable>
+</View>
         </View>
 
         {/* Submit */}
