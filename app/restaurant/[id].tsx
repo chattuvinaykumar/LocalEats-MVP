@@ -11,7 +11,10 @@ import {
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { ArrowLeft, Star, Clock, MapPin, Minus, Plus, ShoppingBag } from 'lucide-react-native';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
-import { restaurants, menuItems } from '../../data/mock';
+import { fetchRestaurantById, fetchMenuItems } from '../../lib/data';
+import { useAuth } from '../../context/AuthContext';
+import { Alert } from 'react-native';
+import { getReviewsForRestaurant, createReview, getCustomerOrders } from '../../lib/business';
 import { useCart } from '../../context/CartContext';
 import { MenuItem, Offer } from '../../types';
 import { getOffers } from '../../lib/business';
@@ -20,17 +23,64 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function RestaurantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const restaurant = restaurants.find(r => r.id === id);
-  const items = menuItems.filter(m => m.restaurantId === id);
+  const [restaurant, setRestaurant] = useState<any | null>(null);
+  const [items, setItems] = useState<any[]>([]);
   const { addItem, totalItems } = useCart();
+  const { user } = useAuth();
 
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [canReview, setCanReview] = useState(false);
 
   useEffect(() => {
     if (id) {
       loadOffers();
+      loadReviews();
+      (async () => {
+        try {
+          const r = await fetchRestaurantById(id as string);
+          setRestaurant(r);
+        } catch (e) {
+          console.warn('Failed to load restaurant:', e);
+        }
+        try {
+          const its = await fetchMenuItems(id as string);
+          setItems(its);
+        } catch (e) {
+          console.warn('Failed to load menu items:', e);
+        }
+      })();
     }
   }, [id]);
+
+  // Listen for cross-tab/localStorage signals that offers changed and reload
+  useEffect(() => {
+    const handler = (ev: StorageEvent) => {
+      try {
+        if (ev.key === 'offers_updated') loadOffers();
+      } catch (e) { console.warn('offers_updated handler error', e); }
+    };
+    if (typeof window !== 'undefined') window.addEventListener('storage', handler);
+    return () => { if (typeof window !== 'undefined') window.removeEventListener('storage', handler); };
+  }, [id]);
+
+  const loadReviews = async () => {
+    try {
+      const data = await getReviewsForRestaurant(id as string);
+      setReviews(data || []);
+    } catch (e) {
+      console.warn('Could not load reviews for restaurant:', e);
+    }
+    if (user) {
+      try {
+        const orders = await getCustomerOrders(user.id);
+        const hasOrder = orders.some(o => o.restaurantId === id);
+        setCanReview(hasOrder);
+      } catch (e) {
+        setCanReview(false);
+      }
+    }
+  };
 
   const loadOffers = async () => {
     try {
@@ -46,9 +96,11 @@ export default function RestaurantDetailScreen() {
     return cats;
   }, [items]);
 
-  const [activeCategory, setActiveCategory] = useState<string>(
-    categories[0] ?? ''
-  );
+  const [activeCategory, setActiveCategory] = useState<string>('');
+
+  useEffect(() => {
+    if (categories.length > 0 && !activeCategory) setActiveCategory(categories[0]);
+  }, [categories]);
 
   const filteredItems = useMemo(
     () => (activeCategory ? items.filter(i => i.category === activeCategory) : items),
@@ -156,6 +208,33 @@ export default function RestaurantDetailScreen() {
             <View style={styles.emptyMenu}>
               <Text style={styles.emptyMenuText}>No items in this category</Text>
             </View>
+          )}
+        </View>
+
+        {/* Reviews Section */}
+        <View style={{ paddingHorizontal: Spacing.lg, marginTop: Spacing.md }}>
+          <Text style={{ fontSize: FontSizes.md + 2, fontWeight: '700', marginBottom: 8 }}>Reviews</Text>
+          {reviews.length === 0 && <Text style={{ color: Colors.textSecondary }}>No reviews yet</Text>}
+          {reviews.map(r => (
+            <View key={r.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+              <Text style={{ fontWeight: '700' }}>{r.user_id || 'User'}</Text>
+              <Text style={{ color: Colors.textSecondary }}>{r.comment}</Text>
+              <Text style={{ color: Colors.textSecondary }}>{'★'.repeat(r.rating || 0)}</Text>
+            </View>
+          ))}
+          {canReview && (
+            <Pressable style={{ marginTop: Spacing.md, padding: 12, backgroundColor: Colors.primary[500], borderRadius: BorderRadius.md }} onPress={async () => {
+              if (!user) { Alert.alert('Sign in required'); return; }
+              try {
+                await createReview(user.id, id as string, null, 5, 'Great food!');
+                await loadReviews();
+                Alert.alert('Thanks', 'Your review has been submitted');
+              } catch (e) {
+                Alert.alert('Error', 'Could not submit review');
+              }
+            }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Write a review</Text>
+            </Pressable>
           )}
         </View>
 

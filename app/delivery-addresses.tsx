@@ -3,6 +3,8 @@ import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Alert } from 
 import { ArrowLeft, Plus, Trash2, Pin, Check, MapPin } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSizes, BorderRadius, Shadows } from '../constants/theme';
+import { useAuth } from '../context/AuthContext';
+import { getAddresses, createAddress, updateAddress, deleteAddress } from '../lib/business';
 
 const ADDRESSES_STORAGE_KEY = 'localeats_saved_addresses';
 
@@ -47,6 +49,7 @@ function requestConfirmation(title: string, message: string, onConfirm: () => vo
 }
 
 export default function DeliveryAddressesScreen() {
+  const { user } = useAuth();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
@@ -61,21 +64,25 @@ export default function DeliveryAddressesScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDeleteLabel, setPendingDeleteLabel] = useState<string | null>(null);
+  const [confirmText, setConfirmText] = useState('');
 
   useEffect(() => {
-    const raw = safeLocalStorageGet(ADDRESSES_STORAGE_KEY);
-    if (raw) {
+    const load = async () => {
+      if (!user) return;
       try {
-        setAddresses(JSON.parse(raw));
-      } catch {
-        setAddresses([]);
+        const data = await getAddresses(user.id);
+        setAddresses(data || []);
+      } catch (e) {
+        console.warn('Failed to load addresses, fallback to empty', e);
       }
-    }
-  }, []);
+    };
+    load();
+  }, [user]);
 
   const saveAddresses = (next: Address[]) => {
     setAddresses(next);
-    safeLocalStorageSet(ADDRESSES_STORAGE_KEY, JSON.stringify(next));
   };
 
   const clearForm = () => {
@@ -177,51 +184,87 @@ export default function DeliveryAddressesScreen() {
     );
   };
 
-  const handleDeleteAddress = (id: string) => {
-    requestConfirmation('Delete Address', 'Are you sure you want to delete this address?', () => {
-      const next = addresses.filter(item => item.id !== id);
+  const handleDeleteAddress = (id: string, labelText?: string) => {
+    // Defer actual deletion until user confirms in the UI modal to avoid accidental deletes
+    setPendingDeleteId(id);
+    setPendingDeleteLabel(labelText || null);
+  };
+
+  const confirmDeleteAddress = async () => {
+    if (!pendingDeleteId) return;
+    try {
+      if (user) await deleteAddress(user.id, pendingDeleteId);
+      const next = addresses.filter(item => item.id !== pendingDeleteId);
       saveAddresses(next);
       setFeedback('Address deleted successfully.');
       setTimeout(() => setFeedback(''), 2500);
-    });
+    } catch (e) {
+      Alert.alert('Error', 'Failed to delete address.');
+    } finally {
+      setPendingDeleteId(null);
+      setPendingDeleteLabel(null);
+      setConfirmText('');
+    }
   };
 
-  const handleSetDefault = (id: string) => {
-    const next = addresses.map(item => ({ ...item, isDefault: item.id === id }));
-    saveAddresses(next);
-    setFeedback('Default address updated.');
-    setTimeout(() => setFeedback(''), 2500);
+  const cancelDelete = () => {
+    setPendingDeleteId(null);
+    setPendingDeleteLabel(null);
+    setConfirmText('');
   };
 
-  const handleSaveAddress = () => {
+  const handleSetDefault = async (id: string) => {
+    try {
+      if (!user) return;
+      // mark server-side
+      await updateAddress(user.id, id, { is_default: true, updated_at: new Date().toISOString() });
+      const data = await getAddresses(user.id);
+      saveAddresses(data || []);
+      setFeedback('Default address updated.');
+      setTimeout(() => setFeedback(''), 2500);
+    } catch (e) {
+      setFeedback('Failed to set default address.');
+      setTimeout(() => setFeedback(''), 2500);
+    }
+  };
+
+  const handleSaveAddress = async () => {
     if (!line1.trim() || !area.trim() || !city.trim() || !stateValue.trim() || !zip.trim() || !phone.trim()) {
       Alert.alert('Missing information', 'Please complete all required fields to save your address.');
       return;
     }
+    if (!user) {
+      Alert.alert('Not signed in', 'Please sign in to save addresses.');
+      return;
+    }
 
-    const nextAddress: Address = {
-      id: editingAddressId || `address_${Date.now()}`,
-      label: label.trim() || 'Home',
-      line1: line1.trim(),
-      line2: line2.trim(),
-      area: area.trim(),
-      city: city.trim(),
-      state: stateValue.trim(),
-      zip: zip.trim(),
-      phone: phone.trim(),
-      isDefault: editingAddressId ? addresses.find(a => a.id === editingAddressId)?.isDefault ?? false : addresses.length === 0,
-    };
+    try {
+      const payload = {
+        label: label.trim() || 'Home',
+        recipient_name: label.trim(),
+        phone: phone.trim(),
+        address_line: line1.trim() + (line2 ? `, ${line2.trim()}` : ''),
+        city: city.trim(),
+        state: stateValue.trim(),
+        postal_code: zip.trim(),
+        is_default: editingAddressId ? undefined : addresses.length === 0
+      } as any;
 
-    const next = editingAddressId
-      ? addresses.map(item => (item.id === editingAddressId ? nextAddress : item))
-      : [...addresses, nextAddress];
+      if (editingAddressId) {
+        await updateAddress(user.id, editingAddressId, payload);
+      } else {
+        await createAddress(user.id, payload);
+      }
 
-    const normalized = next.map(item => ({ ...item, isDefault: item.isDefault || (!next.some(a => a.isDefault) && item.id === nextAddress.id) }));
-    saveAddresses(normalized);
-    setFeedback(editingAddressId ? 'Address updated successfully.' : 'Address added successfully.');
-    setTimeout(() => setFeedback(''), 2500);
-    clearForm();
-    setIsFormOpen(false);
+      const data = await getAddresses(user.id);
+      saveAddresses(data || []);
+      setFeedback(editingAddressId ? 'Address updated successfully.' : 'Address added successfully.');
+      setTimeout(() => setFeedback(''), 2500);
+      clearForm();
+      setIsFormOpen(false);
+    } catch (e) {
+      Alert.alert('Error', 'Could not save address.');
+    }
   };
 
   return (
@@ -383,6 +426,30 @@ export default function DeliveryAddressesScreen() {
           <Text style={styles.sectionText}>Use this form to keep your delivery address list current.</Text>
         )}
       </View>
+
+      {pendingDeleteId ? (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Confirm Delete</Text>
+            <Text style={styles.modalMessage}>{`Delete address${pendingDeleteLabel ? ` "${pendingDeleteLabel}"` : ''}? This action cannot be undone.`}</Text>
+            <TextInput
+              placeholder="Type DELETE to confirm"
+              value={confirmText}
+              onChangeText={setConfirmText}
+              placeholderTextColor={Colors.neutral[400]}
+              style={[styles.textInput, { marginTop: Spacing.sm }]}
+            />
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+              <Pressable onPress={cancelDelete} style={({ pressed }) => [styles.actionPill, pressed && styles.buttonPressed]}>
+                <Text style={styles.actionText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={confirmDeleteAddress} disabled={confirmText !== 'DELETE'} style={({ pressed }) => [styles.deletePill, pressed && styles.buttonPressed, confirmText !== 'DELETE' && { opacity: 0.5 }]}>
+                <Text style={[styles.actionText, styles.deleteText]}>Confirm Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
 
       {feedback ? <Text style={styles.successText}>{feedback}</Text> : null}
       <View style={styles.bottomSpacer} />
@@ -616,5 +683,37 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: Spacing.xxl,
+  },
+  modalOverlay: {
+    position: 'fixed',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.md,
+  },
+  modalCard: {
+    backgroundColor: Colors.background,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    width: '100%',
+    maxWidth: 520,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+  },
+  modalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: '700',
+    color: Colors.text,
+    fontFamily: 'Inter-Bold',
+    marginBottom: Spacing.xs,
+  },
+  modalMessage: {
+    fontSize: FontSizes.md,
+    color: Colors.textSecondary,
+    fontFamily: 'Inter-Regular',
   },
 });

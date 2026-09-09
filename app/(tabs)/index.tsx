@@ -12,7 +12,8 @@ import {
 import { MapPin, Bell, TrendingUp, Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
-import { categories, promoBanners, restaurants, menuItems } from '../../data/mock';
+import { categories, promoBanners } from '../../data/mock';
+import { fetchRestaurants, fetchMenuItems } from '../../lib/data';
 import SearchBar from '../../components/SearchBar';
 import SectionHeader from '../../components/SectionHeader';
 import RestaurantCard from '../../components/RestaurantCard';
@@ -33,9 +34,29 @@ export default function HomeScreen() {
   const { addItem } = useCart();
   const { city } = useLocation();
   const [activeOffers, setActiveOffers] = useState<(Offer & { restaurantName: string })[]>([]);
+  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [menuItems, setMenuItems] = useState<any[]>([]);
 
   useEffect(() => {
     loadActiveOffers();
+  }, [city]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const rs = await fetchRestaurants();
+        setRestaurants(rs);
+      } catch (e) {
+        console.warn('Failed fetching restaurants:', e);
+      }
+      try {
+        const ms = await fetchMenuItems();
+        setMenuItems(ms);
+      } catch (e) {
+        console.warn('Failed fetching menu items:', e);
+      }
+    };
+    load();
   }, [city]);
 
   const loadActiveOffers = async () => {

@@ -98,9 +98,12 @@ export default function OrderHistoryScreen() {
                   <Clock size={12} color={Colors.neutral[400]} style={{ marginRight: 4 }} />
                   <Text style={styles.orderRefText}>ID: {order.id.toUpperCase()}</Text>
                 </View>
-                <Text style={styles.totalText}>
-                  Paid: <Text style={styles.totalAmount}>₹{order.totalPrice}</Text>
-                </Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  {order.address && <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>{order.address}</Text>}
+                  <Text style={styles.totalText}>
+                    Paid: <Text style={styles.totalAmount}>₹{order.totalPrice}</Text>
+                  </Text>
+                </View>
               </View>
             </View>
           ))

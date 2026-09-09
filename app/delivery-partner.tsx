@@ -7,6 +7,7 @@ import { useCart } from '../context/CartContext';
 import { useNotifications } from '../context/NotificationsContext';
 import { useAuth } from '../context/AuthContext';
 import { placeOrder } from '../lib/business';
+import { getAddresses } from '../lib/business';
 import { supabase } from '../lib/supabase';
 
 interface DeliveryOption {
@@ -47,6 +48,7 @@ const DELIVERY_OPTIONS: DeliveryOption[] = [
 
 export default function DeliveryPartnerScreen() {
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<'COD' | 'Razorpay'>('COD');
   const [confirmed, setConfirmed] = useState(false);
   const [placing, setPlacing] = useState(false);
@@ -58,6 +60,7 @@ export default function DeliveryPartnerScreen() {
   const { user } = useAuth();
 
   const cartRestaurantId = items[0]?.menuItem?.restaurantId;
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
 
   // Load Razorpay dynamically on Web
   useEffect(() => {
@@ -87,6 +90,21 @@ export default function DeliveryPartnerScreen() {
         });
     }
   }, [cartRestaurantId]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return;
+      try {
+        const data = await getAddresses(user.id);
+        setSavedAddresses(data || []);
+        const defaultAddr = (data || []).find((a: any) => a.is_default) || (data || [])[0];
+        if (defaultAddr) setSelectedAddressId(defaultAddr.id);
+      } catch (e) {
+        console.warn('Failed loading addresses for checkout', e);
+      }
+    };
+    load();
+  }, [user]);
 
   const handleConfirm = async () => {
     if (!selectedPartner || items.length === 0) {
@@ -158,6 +176,7 @@ export default function DeliveryPartnerScreen() {
         restaurantName,
         items,
         total,
+        selectedAddressId,
         selectedPayment, // payment_method field
         status,          // payment_status field
         txId            // transaction_id field
@@ -248,6 +267,22 @@ export default function DeliveryPartnerScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
+        {/* Address selector */}
+        <Text style={styles.sectionHeading}>Delivery Address</Text>
+        <Text style={styles.subtitle}>Choose a saved address or manage your addresses</Text>
+        <View style={{ marginBottom: 12 }}>
+          {savedAddresses.length === 0 && (
+            <Pressable onPress={() => router.push('/delivery-addresses')} style={{ padding: 12, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md }}>
+              <Text style={{ color: Colors.primary[500] }}>Add or manage your addresses</Text>
+            </Pressable>
+          )}
+          {savedAddresses.map(addr => (
+            <Pressable key={addr.id} onPress={() => setSelectedAddressId(addr.id)} style={[{ padding: 12, borderWidth: 1, borderColor: selectedAddressId === addr.id ? Colors.primary[500] : Colors.border, borderRadius: BorderRadius.md, marginTop: 8 }]}>
+              <Text style={{ fontWeight: '700' }}>{addr.label}</Text>
+              <Text style={{ color: Colors.textSecondary }}>{addr.address_line}</Text>
+            </Pressable>
+          ))}
+        </View>
         <Text style={styles.sectionHeading}>Choose Delivery Service</Text>
         <Text style={styles.subtitle}>Select your preferred fleet delivery agent</Text>
 

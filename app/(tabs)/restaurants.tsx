@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, FlatList, Pressable, StyleSheet } from 'react-native';
 import { SlidersHorizontal } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
-import { restaurants, menuItems, categories } from '../../data/mock';
+import { categories } from '../../data/mock';
+import { fetchRestaurants, fetchMenuItems } from '../../lib/data';
 import SearchBar from '../../components/SearchBar';
+import { searchCatalog } from '../../lib/business';
 import RestaurantCard from '../../components/RestaurantCard';
 import MenuItemCard from '../../components/MenuItemCard';
 import { useCart } from '../../context/CartContext';
@@ -14,10 +16,32 @@ type FilterMode = 'all' | 'restaurant' | 'dish';
 
 export default function RestaurantsScreen() {
   const [search, setSearch] = useState('');
+  const [searchRestaurants, setSearchRestaurants] = useState<Restaurant[]>([]);
+  const [searchDishes, setSearchDishes] = useState<MenuItem[]>([]);
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [selectedCuisine, setSelectedCuisine] = useState<string | null>(null);
   const { addItem } = useCart();
   const goToRestaurant = (id: string) => router.push(`/restaurant/${id}`);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const rs = await fetchRestaurants();
+        setRestaurants(rs);
+      } catch (e) {
+        console.warn('Failed loading restaurants:', e);
+      }
+      try {
+        const ms = await fetchMenuItems();
+        setMenuItems(ms);
+      } catch (e) {
+        console.warn('Failed loading menu items:', e);
+      }
+    };
+    load();
+  }, []);
 
   const filteredRestaurants = useMemo(() => {
     let result = restaurants;
@@ -62,6 +86,24 @@ export default function RestaurantsScreen() {
     }
     return result;
   }, [search, selectedCuisine]);
+
+  // When search is present, use Supabase-backed search
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      if (!search || search.trim().length === 0) return;
+      try {
+        const res = await searchCatalog(search.trim());
+        if (!mounted) return;
+        setSearchRestaurants((res.restaurants || []).map((r: any) => ({ id: r.id, name: r.name, cuisine: r.cuisine, rating: Number(r.rating || 0), reviewCount: r.review_count || 0, deliveryTime: r.delivery_time || '', deliveryFee: Number(r.delivery_fee || 0), priceRange: r.price_range || '', image: r.image || '', tags: r.tags || [], featured: r.featured || false, city: r.city || ''})));
+        setSearchDishes((res.dishes || []).map((d: any) => ({ id: d.id, restaurantId: d.restaurant_id, name: d.name, description: d.description, price: Number(d.price || 0), image: d.image || '', category: d.category || '', popular: d.popular || false })));
+      } catch (e) {
+        console.warn('Search failed:', e);
+      }
+    };
+    const t = setTimeout(run, 300);
+    return () => { mounted = false; clearTimeout(t); };
+  }, [search]);
 
   const cuisineFilters = ['All', ...new Set(restaurants.map(r => r.cuisine))];
 
@@ -123,10 +165,10 @@ export default function RestaurantsScreen() {
       {/* Content */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {(filterMode === 'all' || filterMode === 'restaurant') &&
-          filteredRestaurants.map(r => <RestaurantCard key={r.id} restaurant={r} onPress={goToRestaurant} />)}
+          (search.trim().length > 0 ? searchRestaurants : filteredRestaurants).map(r => <RestaurantCard key={r.id} restaurant={r} onPress={goToRestaurant} />)}
 
         {(filterMode === 'all' || filterMode === 'dish') &&
-          filteredDishes.map(m => <MenuItemCard key={m.id} item={m} onAdd={addItem} />)}
+          (search.trim().length > 0 ? searchDishes : filteredDishes).map(m => <MenuItemCard key={m.id} item={m} onAdd={addItem} />)}
 
         {filteredRestaurants.length === 0 && filteredDishes.length === 0 && (
           <View style={styles.emptyState}>

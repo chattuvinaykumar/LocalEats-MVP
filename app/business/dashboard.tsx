@@ -28,6 +28,7 @@ export default function BusinessDashboardScreen() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('orders');
   const [loading, setLoading] = useState(true);
   const [simulating, setSimulating] = useState(false);
+  const [analytics, setAnalytics] = useState<any>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -52,6 +53,12 @@ export default function BusinessDashboardScreen() {
 
       setOrders(loadedOrders);
       setMenuItems(loadedMenu);
+      try {
+        const a = await (await import('../../lib/business')).getMerchantAnalytics(user.id, rest.id);
+        setAnalytics(a);
+      } catch (e) {
+        console.warn('Failed loading analytics', e);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -136,7 +143,7 @@ export default function BusinessDashboardScreen() {
   }
 
   const activeOrdersCount = orders.filter(o => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready').length;
-  const totalRevenue = orders.reduce((sum, o) => o.status === 'delivered' ? sum + o.totalPrice : sum, 0);
+  const totalRevenue = analytics ? analytics.todayRevenue : orders.reduce((sum, o) => o.status === 'delivered' ? sum + o.totalPrice : sum, 0);
 
   return (
     <View style={styles.container}>
@@ -172,14 +179,14 @@ export default function BusinessDashboardScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsContainer}>
           <View style={styles.metricCard}>
             <TrendingUp size={20} color={Colors.primary[500]} />
-            <Text style={styles.metricValue}>₹{totalRevenue}</Text>
+            <Text style={styles.metricValue}>₹{analytics ? analytics.todayRevenue : totalRevenue}</Text>
             <Text style={styles.metricLabel}>{"Today's Earnings"}</Text>
           </View>
 
           <View style={styles.metricCard}>
             <ShoppingBag size={20} color="#3B82F6" />
-            <Text style={styles.metricValue}>{activeOrdersCount}</Text>
-            <Text style={styles.metricLabel}>New Orders</Text>
+            <Text style={styles.metricValue}>{analytics ? analytics.deliveredCount : activeOrdersCount}</Text>
+            <Text style={styles.metricLabel}>Delivered Orders</Text>
           </View>
 
           <View style={styles.metricCard}>

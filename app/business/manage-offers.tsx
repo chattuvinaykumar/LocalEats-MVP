@@ -4,7 +4,7 @@ import { ArrowLeft, Tag, Plus, Check, Trash2, Calendar, Image as ImageIcon, Perc
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
-import { getOwnedRestaurant, getOffers, createOffer, updateOffer, deleteOffer } from '../../lib/business';
+import { getOwnedRestaurant, getOffers, createOffer, updateOffer, deleteOffer, uploadImageToStorage } from '../../lib/business';
 import { Restaurant, Offer } from '../../types';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -141,6 +141,17 @@ export default function ManageOffersScreen() {
 
     try {
       setLoading(true);
+      // If bannerImage is a local URI (starts with file: or data:), upload it to Supabase Storage
+      let finalImage = bannerImage.trim();
+      try {
+        if (finalImage.startsWith('data:') || finalImage.startsWith('file:') || finalImage.startsWith('/')) {
+          const dest = `offers/${restaurant.id}/${Date.now()}-banner.jpg`;
+          finalImage = await uploadImageToStorage('public', dest, finalImage);
+        }
+      } catch (e) {
+        console.warn('Image upload failed, falling back to provided URI', e);
+      }
+
       if (editingOfferId) {
         // Edit flow
         const updatedObj: Offer = {
@@ -151,7 +162,7 @@ export default function ManageOffersScreen() {
           discountPercentage: discountNum,
           startDate: startDate.trim(),
           endDate: endDate.trim(),
-          bannerImage: bannerImage.trim(),
+          bannerImage: finalImage,
           isActive: isActive
         };
         await updateOffer(restaurant.id, updatedObj);
@@ -164,7 +175,7 @@ export default function ManageOffersScreen() {
           discountPercentage: discountNum,
           startDate: startDate.trim(),
           endDate: endDate.trim(),
-          bannerImage: bannerImage.trim()
+          bannerImage: finalImage
         });
         Alert.alert('Success', 'New promotional offer has been created successfully!');
       }

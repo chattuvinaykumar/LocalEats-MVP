@@ -18,7 +18,7 @@ export default function MenuItemCard({ item, onAdd }: MenuItemCardProps) {
             <Text style={styles.popularText}>Popular</Text>
           </View>
         )}
-        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+        <Text testID={`menu-item-name-${item.id}`} accessibilityLabel={`menu-item-name-${item.id}`} style={styles.name} numberOfLines={1}>{item.name}</Text>
         <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
         <Text style={styles.price}>₹{item.price}</Text>
       </View>

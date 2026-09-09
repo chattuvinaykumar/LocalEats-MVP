@@ -52,6 +52,269 @@ export interface MerchantOrder {
   transactionId?: string;
 }
 
+// --- ADDRESSES (persistent storage in Supabase) ---
+export async function getAddresses(userId: string) {
+  if (!userId) return [];
+  try {
+    const { data, error } = await supabase.from('addresses').select('*').eq('user_id', userId).order('is_default', { ascending: false }).order('created_at', { ascending: false });
+    if (data && !error) {
+      // Map DB column names to the UI-friendly shape expected by DeliveryAddressesScreen
+      return data.map((d: any) => ({
+        id: d.id,
+        label: d.label || d.recipient_name || 'Home',
+        line1: d.address_line || '',
+        line2: d.address_line2 || '',
+        area: d.area || '',
+        city: d.city || '',
+        state: d.state || d.region || '',
+        zip: d.postal_code || d.zip || '',
+        phone: d.phone || '',
+        isDefault: !!d.is_default,
+      }));
+    }
+  } catch (e) {
+    console.warn('getAddresses failed:', e);
+  }
+  return [];
+}
+
+export async function createAddress(userId: string, address: any) {
+  const id = `addr-${Date.now()}`;
+  try {
+    const row = { id, user_id: userId, label: address.label || 'Home', recipient_name: address.recipient_name || '', phone: address.phone || '', address_line: address.address_line, city: address.city || '', state: address.state || '', postal_code: address.postal_code || '', latitude: address.latitude || null, longitude: address.longitude || null, is_default: !!address.is_default };
+    const { error } = await supabase.from('addresses').insert(row);
+    if (error) throw error;
+    return row;
+  } catch (e) {
+    console.warn('createAddress failed:', e);
+    throw e;
+  }
+}
+
+export async function updateAddress(userId: string, id: string, address: any) {
+  try {
+    const { error } = await supabase.from('addresses').update(address).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+    const { data } = await supabase.from('addresses').select('*').eq('id', id).maybeSingle();
+    return data;
+  } catch (e) {
+    console.warn('updateAddress failed:', e);
+    throw e;
+  }
+}
+
+export async function deleteAddress(userId: string, id: string) {
+  try {
+    console.warn('deleteAddress called for', userId, id, new Error().stack);
+    const { error } = await supabase.from('addresses').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn('deleteAddress failed:', e);
+    return false;
+  }
+}
+
+// --- NOTIFICATIONS (persistent) ---
+export async function getNotifications(userId: string) {
+  if (!userId) return [];
+  try {
+    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (data && !error) return data;
+  } catch (e) {
+    console.warn('getNotifications failed:', e);
+  }
+  return [];
+}
+
+export async function markNotificationRead(userId: string, id: string) {
+  try {
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn('markNotificationRead failed:', e);
+    return false;
+  }
+}
+
+// --- REVIEWS ---
+export async function getReviewsForRestaurant(restaurantId: string) {
+  try {
+    const { data, error } = await supabase.from('reviews').select('*, auth.users(id, email)');
+    if (data && !error) {
+      const filtered = data.filter((r: any) => r.restaurant_id === restaurantId);
+      return filtered;
+    }
+  } catch (e) {
+    console.warn('getReviewsForRestaurant failed:', e);
+  }
+  return [];
+}
+
+export async function createReview(userId: string, restaurantId: string, orderId: string | null, rating: number, comment: string) {
+  const id = `rev-${Date.now()}`;
+  try {
+    const { error } = await supabase.from('reviews').insert({ id, user_id: userId, restaurant_id: restaurantId, order_id: orderId, rating, comment });
+    if (error) throw error;
+
+    // Update restaurant aggregates by computing from all reviews (safe, avoids SQL alias issues)
+    try {
+      const { data: allReviews } = await supabase.from('reviews').select('rating').eq('restaurant_id', restaurantId);
+      if (allReviews && allReviews.length > 0) {
+        const sum = allReviews.reduce((s: number, r: any) => s + Number(r.rating || 0), 0);
+        const avg = (sum / allReviews.length) || 0;
+        await supabase.from('restaurants').update({ rating: avg.toFixed(2), review_count: allReviews.length }).eq('id', restaurantId);
+      }
+    } catch (e) {
+      console.warn('Failed to compute aggregates client-side:', e);
+    }
+
+    return id;
+  } catch (e) {
+    console.warn('createReview failed:', e);
+    throw e;
+  }
+}
+
+export async function createNotification(userId: string, payload: any) {
+  try {
+    const row = {
+      id: payload.id || `notif-${Date.now()}`,
+      user_id: userId,
+      title: payload.title,
+      message: payload.message,
+      category: payload.category || 'app',
+      related_entity: payload.related_entity || null,
+      related_id: payload.related_id || null,
+      read: false
+    };
+    const { error } = await supabase.from('notifications').insert(row);
+    if (error) {
+      // Fall back to localStorage so demo users still see notifications even when RLS blocks server writes
+      try {
+        if (typeof window !== 'undefined') {
+          const key = 'localeats_notifications';
+          const stored = localStorage.getItem(key);
+          let arr = stored ? JSON.parse(stored) : [];
+          arr = [{ id: row.id, title: row.title, message: row.message, timestamp: 'Just now', read: false }, ...arr];
+          localStorage.setItem(key, JSON.stringify(arr));
+          try { localStorage.setItem('notifications_updated', String(Date.now())); } catch (e) {}
+        }
+      } catch (e) { console.warn('Local fallback for notification failed', e); }
+      return row;
+    }
+    return row;
+  } catch (e) {
+    console.warn('createNotification failed:', e);
+    // local fallback
+    try {
+      if (typeof window !== 'undefined') {
+        const key = 'localeats_notifications';
+        const stored = localStorage.getItem(key);
+        let arr = stored ? JSON.parse(stored) : [];
+        const id = payload.id || `notif-${Date.now()}`;
+        arr = [{ id, title: payload.title, message: payload.message, timestamp: 'Just now', read: false }, ...arr];
+        localStorage.setItem(key, JSON.stringify(arr));
+        try { localStorage.setItem('notifications_updated', String(Date.now())); } catch (e) {}
+        return { id, user_id: userId, title: payload.title, message: payload.message };
+      }
+    } catch (e2) { console.warn('Local fallback failed too', e2); }
+    throw e;
+  }
+}
+
+// --- ANALYTICS for merchant dashboard ---
+export async function getMerchantAnalytics(ownerId: string, restaurantId: string) {
+  try {
+    // verify ownership
+    const { data: rest, error: restErr } = await supabase.from('restaurants').select('id').eq('id', restaurantId).eq('owner_id', ownerId).maybeSingle();
+    if (restErr || !rest) {
+      return null;
+    }
+
+    // fetch orders for last 30 days
+    const { data: ordersData } = await supabase.from('orders').select('id,total_price,created_at,status').eq('restaurant_id', restaurantId).order('created_at', { ascending: false });
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+
+    let todayRevenue = 0;
+    let weekRevenue = 0;
+    let monthRevenue = 0;
+    const deliveredOrders: any[] = [];
+    const orderIds: string[] = [];
+    if (ordersData && Array.isArray(ordersData)) {
+      for (const o of ordersData) {
+        const created = new Date(o.created_at);
+        if (o.status === 'delivered') {
+          deliveredOrders.push(o);
+        }
+        if (created >= startToday) todayRevenue += Number(o.total_price || 0);
+        if (created >= startWeek) weekRevenue += Number(o.total_price || 0);
+        if (created >= startMonth) monthRevenue += Number(o.total_price || 0);
+        orderIds.push(o.id);
+      }
+    }
+
+    // best selling items (aggregate locally)
+    let bestSelling: { menu_item_id: string; name: string; quantity: number }[] = [];
+    if (orderIds.length > 0) {
+      const { data: itemsData } = await supabase.from('order_items').select('menu_item_id,name,quantity').in('order_id', orderIds);
+      if (itemsData) {
+        const agg: Record<string, { name: string; qty: number }> = {};
+        for (const it of itemsData) {
+          const id = it.menu_item_id || it.name;
+          if (!agg[id]) agg[id] = { name: it.name, qty: 0 };
+          agg[id].qty += Number(it.quantity || 0);
+        }
+        bestSelling = Object.keys(agg).map(k => ({ menu_item_id: k, name: agg[k].name, quantity: agg[k].qty })).sort((a, b) => b.quantity - a.quantity).slice(0, 6);
+      }
+    }
+
+    return {
+      todayRevenue,
+      weekRevenue,
+      monthRevenue,
+      deliveredCount: deliveredOrders.length,
+      bestSelling
+    };
+  } catch (e) {
+    console.warn('getMerchantAnalytics failed:', e);
+    return null;
+  }
+}
+
+// --- SEARCH ---
+export async function searchCatalog(query: string) {
+  const q = (query || '').trim();
+  if (!q) return { restaurants: [], dishes: [] };
+  try {
+    // Restaurants: full-text search and ilike fallback
+    const { data: restFT } = await supabase.from('restaurants').select('*').textSearch('name, cuisine', q, { config: 'english' }).limit(20);
+    let restaurantsRes = restFT || [];
+    if (restaurantsRes.length === 0) {
+      const { data: restLike } = await supabase.from('restaurants').select('*').ilike('name', `%${q}%`).limit(20);
+      restaurantsRes = restLike || [];
+    }
+
+    // Dishes: search menu_items and join restaurants for context
+    const { data: dishFT } = await supabase.from('menu_items').select('*, restaurants(name)').textSearch('name, description', q, { config: 'english' }).limit(30);
+    let dishesRes = dishFT || [];
+    if (dishesRes.length === 0) {
+      const { data: dishLike } = await supabase.from('menu_items').select('*, restaurants(name)').ilike('name', `%${q}%`).limit(30);
+      dishesRes = dishLike || [];
+    }
+
+    return { restaurants: restaurantsRes, dishes: dishesRes };
+  } catch (e) {
+    console.warn('searchCatalog failed:', e);
+    return { restaurants: [], dishes: [] };
+  }
+}
+
+
 // Get restaurant owned by a user
 export async function getOwnedRestaurant(userId: string): Promise<Restaurant | null> {
   try {
@@ -436,8 +699,55 @@ export async function updateBusinessOrderStatus(restaurantId: string, orderId: s
     if (error) {
       console.warn("Supabase order update failed:", error.message);
     }
+    try {
+      // Notify customer about status change
+      const { data: ord } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+      if (ord && ord.user_id) {
+        await createNotification(ord.user_id, {
+          id: `notif-${orderId}-status-${Date.now()}`,
+          title: `Order ${orderId} is ${status}`,
+          message: `Your order ${orderId} status has been updated to ${status}.`,
+          category: 'order',
+          related_entity: 'orders',
+          related_id: orderId
+        });
+      }
+    } catch (nErr) {
+      console.warn('Failed to create status-change notification:', nErr);
+    }
   } catch (err) {
     console.warn("Supabase updateBusinessOrderStatus failed (fallback active):", err);
+    // Even if Supabase update fails (RLS), still attempt to create a notification via local fallback so customers see updates in demo
+    try {
+      // Try to determine user id from stored local orders if possible
+      let userId: string | null = null;
+      if (typeof window !== 'undefined') {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY)) {
+            const custOrders = JSON.parse(localStorage.getItem(key) || '[]');
+            const found = (custOrders || []).find((o: any) => o.id === orderId);
+            if (found) {
+              userId = key.replace(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY, '');
+              break;
+            }
+          }
+        }
+      }
+      const notifUser = userId || null;
+      if (notifUser) {
+        await createNotification(notifUser, {
+          id: `notif-${orderId}-status-${Date.now()}`,
+          title: `Order ${orderId} is ${status}`,
+          message: `Your order ${orderId} status has been updated to ${status}.`,
+          category: 'order',
+          related_entity: 'orders',
+          related_id: orderId
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to create local notification fallback for order status:', e);
+    }
   }
 
   return getBusinessOrders(restaurantId);
@@ -521,6 +831,7 @@ export async function placeOrder(
   restaurantName: string,
   cartItems: CartItem[],
   totalPrice: number,
+  addressId: string | null = null,
   paymentMethod: string = 'COD',
   paymentStatus: string = 'pending',
   transactionId: string = ''
@@ -582,6 +893,7 @@ export async function placeOrder(
         total_price: totalPrice,
         status: 'pending',
         created_at: createdAt,
+        address_id: addressId,
         payment_method: paymentMethod,
         payment_status: paymentStatus,
         transaction_id: transactionId
@@ -600,6 +912,51 @@ export async function placeOrder(
       await supabase.from('order_items').insert(itemRows);
     } else {
       console.error("Supabase insert order error:", orderError);
+    }
+    // Create notification records: customer and merchant
+    try {
+      // Customer notification
+      await supabase.from('notifications').insert({
+        id: `notif-${orderId}-cust`,
+        user_id: userId,
+        title: 'Order placed',
+        message: `Your order ${orderId} at ${restaurantName} has been placed successfully.`,
+        category: 'order',
+        related_entity: 'orders',
+        related_id: orderId
+      });
+
+      // Merchant notification: find owner
+      const { data: restData } = await supabase.from('restaurants').select('owner_id').eq('id', restaurantId).maybeSingle();
+      if (restData && restData.owner_id) {
+        await supabase.from('notifications').insert({
+          id: `notif-${orderId}-merch`,
+          user_id: restData.owner_id,
+          title: 'New order received',
+          message: `New order ${orderId} was placed at your restaurant ${restaurantName}.`,
+          category: 'order',
+          related_entity: 'orders',
+          related_id: orderId
+        });
+      }
+    } catch (nErr) {
+      console.warn('Failed to create notifications for order:', nErr);
+    }
+    // Record payment event for server-side verification
+    try {
+      if (transactionId && transactionId !== 'N/A') {
+        await supabase.from('payment_events').insert({
+          id: `pe-${orderId}`,
+          order_id: orderId,
+          provider: paymentMethod,
+          transaction_id: transactionId,
+          status: paymentStatus,
+          verified: false,
+          payload: {}
+        });
+      }
+    } catch (pErr) {
+      console.warn('Failed to create payment_event record:', pErr);
     }
   } catch (err) {
     console.warn("Supabase placeOrder error (fallback active):", err);
@@ -641,6 +998,20 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
         .select('*')
         .in('order_id', orderIds);
 
+      // Also fetch any referenced addresses so we can show delivery address in UI
+      const addressIds = Array.from(new Set(ordersData.map((o: any) => o.address_id).filter(Boolean)));
+      let addressesMap: Record<string, any> = {};
+      if (addressIds.length > 0) {
+        try {
+          const { data: addrData } = await supabase.from('addresses').select('*').in('id', addressIds);
+          if (addrData) {
+            addressesMap = addrData.reduce((acc: any, a: any) => ({ ...acc, [a.id]: a }), {});
+          }
+        } catch (e) {
+          console.warn('Failed to fetch order addresses:', e);
+        }
+      }
+
       if (itemsData && !itemsError) {
         const mappedOrders = ordersData.map(o => {
           const associatedItems = itemsData
@@ -650,6 +1021,9 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
               quantity: item.quantity,
               price: Number(item.price)
             }));
+
+          const addr = o.address_id ? addressesMap[o.address_id] : null;
+          const formattedAddress = addr ? `${addr.address_line || ''}${addr.address_line2 ? ', ' + addr.address_line2 : ''}${addr.area ? ', ' + addr.area : ''}${addr.city ? ', ' + addr.city : ''}${addr.postal_code ? ' - ' + addr.postal_code : ''}` : null;
 
           return {
             id: o.id,
@@ -663,7 +1037,9 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
             userId: o.user_id,
             paymentMethod: o.payment_method || 'COD',
             paymentStatus: o.payment_status || 'pending',
-            transactionId: o.transaction_id || ''
+            transactionId: o.transaction_id || '',
+            address: formattedAddress,
+            addressId: o.address_id || null
           };
         });
         return mappedOrders;
@@ -839,8 +1215,35 @@ export async function deleteOffer(restaurantId: string, offerId: string): Promis
     if (error) {
       console.warn('Supabase deleteOffer failed:', error.message);
     }
+    // Notify other UI parts that offers have changed (cross-tab/event)
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('offers_updated', String(Date.now()));
+      }
+    } catch (e) { console.warn('Failed to write offers_updated signal', e); }
   } catch (err) {
     console.warn('Supabase deleteOffer failed:', err);
+  }
+}
+
+// Upload image URI to Supabase Storage and return public URL
+export async function uploadImageToStorage(bucket: string, destPath: string, fileUri: string): Promise<string> {
+  try {
+    // fetch the file as a blob
+    const res = await fetch(fileUri);
+    const blob = await res.blob();
+    const { data, error: upErr } = await supabase.storage.from(bucket).upload(destPath, blob, { upsert: true });
+    if (upErr) {
+      console.warn('Supabase storage upload failed:', upErr.message || upErr);
+      throw upErr;
+    }
+    const { data: urlData } = await supabase.storage.from(bucket).getPublicUrl(destPath);
+    if (urlData && urlData.publicUrl) return urlData.publicUrl;
+    // fallback: return fileUri
+    return fileUri;
+  } catch (e) {
+    console.warn('uploadImageToStorage failed:', e);
+    return fileUri;
   }
 }
 
