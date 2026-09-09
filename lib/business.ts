@@ -366,8 +366,23 @@ export async function saveOwnedRestaurant(
   userId: string, 
   restaurantData: Omit<Restaurant, 'rating' | 'reviewCount'> & { rating?: number; reviewCount?: number }
 ): Promise<Restaurant> {
+  let resolvedImage = restaurantData.image;
+
+  // If the merchant selected a local file or data URI, upload it to the shared public
+  // Supabase Storage bucket and replace the local-only URI with a real URL so the
+  // restaurant image persists in the app and can be displayed by all screens.
+  if (typeof resolvedImage === 'string' && (resolvedImage.startsWith('data:') || resolvedImage.startsWith('file:') || resolvedImage.startsWith('/'))) {
+    try {
+      const dest = `restaurants/${restaurantData.id}/${Date.now()}-banner.jpg`;
+      resolvedImage = await uploadImageToStorage('public', dest, resolvedImage);
+    } catch (e) {
+      console.warn('Restaurant image upload fallback active:', e);
+    }
+  }
+
   const completeRestaurant: Restaurant = {
     ...restaurantData,
+    image: resolvedImage,
     rating: restaurantData.rating ?? 5.0,
     reviewCount: restaurantData.reviewCount ?? 1,
   };
@@ -845,6 +860,22 @@ export async function placeOrder(
     price: item.menuItem.price
   }));
 
+  let formattedAddress: string | null = null;
+  if (addressId) {
+    try {
+      const { data: addrData, error: addrErr } = await supabase
+        .from('addresses')
+        .select('*')
+        .eq('id', addressId)
+        .maybeSingle();
+      if (!addrErr && addrData) {
+        formattedAddress = `${addrData.address_line || ''}${addrData.address_line2 ? ', ' + addrData.address_line2 : ''}${addrData.area ? ', ' + addrData.area : ''}${addrData.city ? ', ' + addrData.city : ''}${addrData.postal_code ? ' - ' + addrData.postal_code : ''}`;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch attached order address for local write:', e);
+    }
+  }
+
   // Create order object for local storage
   const newOrder = {
     id: orderId,
@@ -858,7 +889,9 @@ export async function placeOrder(
     userId,
     paymentMethod,
     paymentStatus,
-    transactionId
+    transactionId,
+    address: formattedAddress || 'Delivery address selected',
+    addressId
   };
 
   // 1. Dual-write to Merchant Orders LOCAL STORAGE
