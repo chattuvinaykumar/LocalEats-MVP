@@ -372,12 +372,8 @@ export async function saveOwnedRestaurant(
   // Supabase Storage bucket and replace the local-only URI with a real URL so the
   // restaurant image persists in the app and can be displayed by all screens.
   if (typeof resolvedImage === 'string' && (resolvedImage.startsWith('data:') || resolvedImage.startsWith('file:') || resolvedImage.startsWith('/'))) {
-    try {
-      const dest = `restaurants/${restaurantData.id}/${Date.now()}-banner.jpg`;
-      resolvedImage = await uploadImageToStorage('public', dest, resolvedImage);
-    } catch (e) {
-      console.warn('Restaurant image upload fallback active:', e);
-    }
+    const dest = `restaurants/${restaurantData.id}/${Date.now()}-banner.jpg`;
+    resolvedImage = await uploadImageToStorage('public', dest, resolvedImage);
   }
 
   const completeRestaurant: Restaurant = {
@@ -1092,6 +1088,27 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
 // --- OFFERS & PROMOTIONS SYSTEM EXPORTS ---
 const LOCAL_STORAGE_OFFERS_KEY = 'localeats_offers_';
 
+async function requireRestaurantOwnerForOfferMutation(restaurantId: string) {
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) {
+    throw new Error('Merchant authentication required to manage offers.');
+  }
+
+  const { data: restaurant, error: restErr } = await supabase
+    .from('restaurants')
+    .select('id, owner_id')
+    .eq('id', restaurantId)
+    .maybeSingle();
+
+  if (restErr || !restaurant) {
+    throw new Error('Restaurant ownership record not found.');
+  }
+
+  if (restaurant.owner_id !== user.id) {
+    throw new Error('Only the authenticated restaurant owner can manage offers.');
+  }
+}
+
 export async function getOffers(restaurantId: string): Promise<Offer[]> {
   let localOffers: Offer[] | null = null;
   if (typeof window !== 'undefined') {
@@ -1160,6 +1177,8 @@ export async function createOffer(
   restaurantId: string,
   offerData: Omit<Offer, 'id' | 'restaurantId' | 'isActive'>
 ): Promise<Offer> {
+  await requireRestaurantOwnerForOfferMutation(restaurantId);
+
   const offerId = `off-${Math.floor(1000 + Math.random() * 9000)}`;
   const newOffer: Offer = {
     id: offerId,
@@ -1174,13 +1193,6 @@ export async function createOffer(
     createdAt: new Date().toISOString()
   };
 
-  // write to local storage first
-  if (typeof window !== 'undefined') {
-    const existing = await getOffers(restaurantId);
-    localStorage.setItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`, JSON.stringify([newOffer, ...existing]));
-  }
-
-  // try saving to Supabase
   try {
     const { error } = await supabase
       .from('offers')
@@ -1195,9 +1207,10 @@ export async function createOffer(
         banner_image: newOffer.bannerImage,
         is_active: newOffer.isActive
       });
-    if (error) console.error("Supabase createOffer failed:", error.message);
+    if (error) throw error;
   } catch (err) {
-    console.warn("Supabase createOffer exception, local storage saved:", err);
+    console.warn('Supabase createOffer failed:', err);
+    throw err;
   }
 
   return newOffer;
@@ -1207,14 +1220,8 @@ export async function updateOffer(
   restaurantId: string,
   offer: Offer
 ): Promise<Offer> {
-  // edit local storage
-  if (typeof window !== 'undefined') {
-    const currentList = await getOffers(restaurantId);
-    const updated = currentList.map(o => o.id === offer.id ? offer : o);
-    localStorage.setItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`, JSON.stringify(updated));
-  }
+  await requireRestaurantOwnerForOfferMutation(restaurantId);
 
-  // try saving to Supabase
   try {
     const { error } = await supabase
       .from('offers')
@@ -1227,56 +1234,55 @@ export async function updateOffer(
         banner_image: offer.bannerImage,
         is_active: offer.isActive
       })
-      .eq('id', offer.id);
-    if (error) console.error("Supabase updateOffer failed:", error.message);
+      .eq('id', offer.id)
+      .eq('restaurant_id', restaurantId);
+    if (error) throw error;
   } catch (err) {
-    console.warn("Supabase updateOffer exception:", err);
+    console.warn('Supabase updateOffer failed:', err);
+    throw err;
   }
 
   return offer;
 }
 
 export async function deleteOffer(restaurantId: string, offerId: string): Promise<void> {
-  if (typeof window !== 'undefined') {
-    const currentList = await getOffers(restaurantId);
-    const updated = currentList.filter(o => o.id !== offerId);
-    localStorage.setItem(`${LOCAL_STORAGE_OFFERS_KEY}${restaurantId}`, JSON.stringify(updated));
-  }
+  await requireRestaurantOwnerForOfferMutation(restaurantId);
 
   try {
-    const { error } = await supabase.from('offers').delete().eq('id', offerId);
-    if (error) {
-      console.warn('Supabase deleteOffer failed:', error.message);
-    }
-    // Notify other UI parts that offers have changed (cross-tab/event)
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('offers_updated', String(Date.now()));
-      }
-    } catch (e) { console.warn('Failed to write offers_updated signal', e); }
+    const { error } = await supabase
+      .from('offers')
+      .delete()
+      .eq('id', offerId)
+      .eq('restaurant_id', restaurantId);
+    if (error) throw error;
   } catch (err) {
     console.warn('Supabase deleteOffer failed:', err);
+    throw err;
   }
 }
 
 // Upload image URI to Supabase Storage and return public URL
 export async function uploadImageToStorage(bucket: string, destPath: string, fileUri: string): Promise<string> {
   try {
-    // fetch the file as a blob
     const res = await fetch(fileUri);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch image file for upload: ${res.status} ${res.statusText}`);
+    }
+
     const blob = await res.blob();
     const { data, error: upErr } = await supabase.storage.from(bucket).upload(destPath, blob, { upsert: true });
     if (upErr) {
       console.warn('Supabase storage upload failed:', upErr.message || upErr);
       throw upErr;
     }
+
     const { data: urlData } = await supabase.storage.from(bucket).getPublicUrl(destPath);
     if (urlData && urlData.publicUrl) return urlData.publicUrl;
-    // fallback: return fileUri
-    return fileUri;
+
+    throw new Error('Supabase storage did not return a public URL for the uploaded image.');
   } catch (e) {
     console.warn('uploadImageToStorage failed:', e);
-    return fileUri;
+    throw e;
   }
 }
 
