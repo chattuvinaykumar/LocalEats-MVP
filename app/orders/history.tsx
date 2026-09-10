@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { ArrowLeft, Clock, ShoppingBag } from 'lucide-react-native';
+import { ArrowLeft, Clock, ShoppingBag, MapPin } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
@@ -98,8 +98,15 @@ export default function OrderHistoryScreen() {
                   <Clock size={12} color={Colors.neutral[400]} style={{ marginRight: 4 }} />
                   <Text style={styles.orderRefText}>ID: {order.id.toUpperCase()}</Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  {order.address && <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>{order.address}</Text>}
+                <View style={styles.deliveryMeta}>
+                  {order.address ? (
+                    <View style={styles.deliveryAddressRow}>
+                      <MapPin size={12} color={Colors.primary[500]} style={{ marginRight: 4 }} />
+                      <Text style={styles.deliveryAddressText} numberOfLines={2}>{order.address}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.deliveryAddressText}>Delivery address not saved</Text>
+                  )}
                   <Text style={styles.totalText}>
                     Paid: <Text style={styles.totalAmount}>₹{order.totalPrice}</Text>
                   </Text>
@@ -262,6 +269,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  deliveryMeta: {
+    alignItems: 'flex-end',
+    maxWidth: '58%',
+  },
+  deliveryAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  deliveryAddressText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    textAlign: 'right',
   },
   orderRefRow: {
     flexDirection: 'row',
