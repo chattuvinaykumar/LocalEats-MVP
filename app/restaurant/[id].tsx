@@ -25,12 +25,14 @@ export default function RestaurantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [items, setItems] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const { addItem, totalItems } = useCart();
   const { user } = useAuth();
 
   const [offers, setOffers] = useState<Offer[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
   const [canReview, setCanReview] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>('');
 
   useEffect(() => {
     if (id) {
@@ -46,6 +48,11 @@ export default function RestaurantDetailScreen() {
         try {
           const its = await fetchMenuItems(id as string);
           setItems(its);
+          const nextCategories = [...new Set(its.map(i => i.category))];
+          setCategories(nextCategories);
+          if (nextCategories.length > 0 && !activeCategory) {
+            setActiveCategory(nextCategories[0]);
+          }
         } catch (e) {
           console.warn('Failed to load menu items:', e);
         }
@@ -91,21 +98,17 @@ export default function RestaurantDetailScreen() {
     }
   };
 
-  const categories = useMemo(() => {
-    const cats = [...new Set(items.map(i => i.category))];
-    return cats;
-  }, [items]);
+  const selectCategory = async (cat: string) => {
+    setActiveCategory(cat);
+    try {
+      const categoryItems = await fetchMenuItems(id as string, cat);
+      setItems(categoryItems);
+    } catch (e) {
+      console.warn('Failed to load category menu items:', e);
+    }
+  };
 
-  const [activeCategory, setActiveCategory] = useState<string>('');
-
-  useEffect(() => {
-    if (categories.length > 0 && !activeCategory) setActiveCategory(categories[0]);
-  }, [categories]);
-
-  const filteredItems = useMemo(
-    () => (activeCategory ? items.filter(i => i.category === activeCategory) : items),
-    [items, activeCategory]
-  );
+  const filteredItems = items;
 
   if (!restaurant) {
     return (
@@ -187,7 +190,7 @@ export default function RestaurantDetailScreen() {
             <Pressable
               key={cat}
               style={[styles.categoryTab, activeCategory === cat && styles.categoryTabActive]}
-              onPress={() => setActiveCategory(cat)}>
+              onPress={() => selectCategory(cat)}>
               <Text
                 style={[
                   styles.categoryTabText,

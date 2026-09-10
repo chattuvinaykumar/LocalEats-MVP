@@ -60,22 +60,31 @@ export async function fetchRestaurantById(id: string): Promise<Restaurant | null
   }
 }
 
-export async function fetchMenuItems(restaurantId?: string): Promise<MenuItem[]> {
+export async function fetchMenuItems(restaurantId?: string, category?: string): Promise<MenuItem[]> {
   try {
     let query = supabase.from('menu_items').select('*');
     if (restaurantId) {
       query = query.eq('restaurant_id', restaurantId);
     }
+    if (category) {
+      query = query.eq('category', category);
+    }
     const { data, error } = await query;
     if (error || !data || data.length === 0) {
-      return restaurantId
+      const mockItems = restaurantId
         ? mockMenuItems.filter(m => m.restaurantId === restaurantId)
         : mockMenuItems;
+      return category
+        ? mockItems.filter(m => m.category === category)
+        : mockItems;
     }
     return data.map(mapMenuItemRow);
   } catch {
-    return restaurantId
+    const mockItems = restaurantId
       ? mockMenuItems.filter(m => m.restaurantId === restaurantId)
       : mockMenuItems;
+    return category
+      ? mockItems.filter(m => m.category === category)
+      : mockItems;
   }
 }
