@@ -81,7 +81,29 @@ export async function getAddresses(userId: string) {
 export async function createAddress(userId: string, address: any) {
   const id = `addr-${Date.now()}`;
   try {
-    const row = { id, user_id: userId, label: address.label || 'Home', recipient_name: address.recipient_name || '', phone: address.phone || '', address_line: address.address_line, city: address.city || '', state: address.state || '', postal_code: address.postal_code || '', latitude: address.latitude || null, longitude: address.longitude || null, is_default: !!address.is_default };
+    const line1 = String(address.address_line || address.line1 || '').trim();
+    const line2 = String(address.line2 || address.address_line2 || '').trim();
+    const area = String(address.area || '').trim();
+    const city = String(address.city || '').trim();
+    const state = String(address.state || '').trim();
+    const postal = String(address.postal_code || address.zip || '').trim();
+    const combinedAddress = [line1, line2, area].filter(Boolean).join(', ');
+
+    const row = {
+      id,
+      user_id: userId,
+      label: address.label || address.recipient_name || 'Home',
+      recipient_name: address.recipient_name || address.label || 'Home',
+      phone: address.phone || '',
+      address_line: combinedAddress || 'Delivery address',
+      city,
+      state,
+      postal_code: postal,
+      latitude: address.latitude || null,
+      longitude: address.longitude || null,
+      is_default: !!address.is_default
+    };
+
     const { error } = await supabase.from('addresses').insert(row);
     if (error) throw error;
     return row;
@@ -93,7 +115,28 @@ export async function createAddress(userId: string, address: any) {
 
 export async function updateAddress(userId: string, id: string, address: any) {
   try {
-    const { error } = await supabase.from('addresses').update(address).eq('id', id).eq('user_id', userId);
+    const updateRow: any = { ...address };
+    if (updateRow.address_line || updateRow.line1 || updateRow.line2 || updateRow.area) {
+      const line1 = String(updateRow.address_line || updateRow.line1 || '').trim();
+      const line2 = String(updateRow.line2 || updateRow.address_line2 || '').trim();
+      const area = String(updateRow.area || '').trim();
+      updateRow.address_line = [line1, line2, area].filter(Boolean).join(', ');
+    }
+    if (updateRow.postal_code == null && updateRow.zip) {
+      updateRow.postal_code = updateRow.zip;
+    }
+    if (updateRow.state == null && updateRow.region) {
+      updateRow.state = updateRow.region;
+    }
+
+    delete updateRow.line1;
+    delete updateRow.line2;
+    delete updateRow.address_line2;
+    delete updateRow.area;
+    delete updateRow.zip;
+    delete updateRow.region;
+
+    const { error } = await supabase.from('addresses').update(updateRow).eq('id', id).eq('user_id', userId);
     if (error) throw error;
     const { data } = await supabase.from('addresses').select('*').eq('id', id).maybeSingle();
     return data;
@@ -644,41 +687,6 @@ export async function getBusinessOrders(restaurantId: string): Promise<MerchantO
 
 // Update order status
 export async function updateBusinessOrderStatus(restaurantId: string, orderId: string, status: MerchantOrder['status']): Promise<MerchantOrder[]> {
-  // Update in local storage
-  if (typeof window !== 'undefined') {
-    // Update merchant order key
-    const merchantStored = localStorage.getItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`);
-    if (merchantStored) {
-      const orders = JSON.parse(merchantStored) as MerchantOrder[];
-      const exists = orders.find(o => o.id === orderId);
-      if (exists) {
-        exists.status = status;
-        localStorage.setItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`, JSON.stringify(orders));
-      }
-    }
-
-    // Also update in ALL customer order keys if possible, or just update the current active user key!
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY)) {
-          const custStored = localStorage.getItem(key);
-          if (custStored) {
-            const custOrders = JSON.parse(custStored);
-            const foundIdx = custOrders.findIndex((o: any) => o.id === orderId);
-            if (foundIdx > -1) {
-              custOrders[foundIdx].status = status;
-              localStorage.setItem(key, JSON.stringify(custOrders));
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Scan adjust customer orders status failed:", e);
-    }
-  }
-
-  // Update in Supabase
   try {
     const { error } = await supabase
       .from('orders')
@@ -686,57 +694,28 @@ export async function updateBusinessOrderStatus(restaurantId: string, orderId: s
       .eq('id', orderId);
 
     if (error) {
-      console.warn("Supabase order update failed:", error.message);
+      throw error;
     }
-    try {
-      // Notify customer about status change
-      const { data: ord } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
-      if (ord && ord.user_id) {
-        await createNotification(ord.user_id, {
-          id: `notif-${orderId}-status-${Date.now()}`,
-          title: `Order ${orderId} is ${status}`,
-          message: `Your order ${orderId} status has been updated to ${status}.`,
-          category: 'order',
-          related_entity: 'orders',
-          related_id: orderId
-        });
-      }
-    } catch (nErr) {
-      console.warn('Failed to create status-change notification:', nErr);
+
+    const { data: ord, error: orderFetchErr } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    if (!orderFetchErr && ord && ord.user_id) {
+      await createNotification(ord.user_id, {
+        id: `notif-${orderId}-status-${Date.now()}`,
+        title: `Order ${orderId} is ${status}`,
+        message: `Your order ${orderId} status has been updated to ${status}.`,
+        category: 'order',
+        related_entity: 'orders',
+        related_id: orderId
+      });
     }
   } catch (err) {
-    console.warn("Supabase updateBusinessOrderStatus failed (fallback active):", err);
-    // Even if Supabase update fails (RLS), still attempt to create a notification via local fallback so customers see updates in demo
-    try {
-      // Try to determine user id from stored local orders if possible
-      let userId: string | null = null;
-      if (typeof window !== 'undefined') {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY)) {
-            const custOrders = JSON.parse(localStorage.getItem(key) || '[]');
-            const found = (custOrders || []).find((o: any) => o.id === orderId);
-            if (found) {
-              userId = key.replace(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY, '');
-              break;
-            }
-          }
-        }
-      }
-      const notifUser = userId || null;
-      if (notifUser) {
-        await createNotification(notifUser, {
-          id: `notif-${orderId}-status-${Date.now()}`,
-          title: `Order ${orderId} is ${status}`,
-          message: `Your order ${orderId} status has been updated to ${status}.`,
-          category: 'order',
-          related_entity: 'orders',
-          related_id: orderId
-        });
-      }
-    } catch (e) {
-      console.warn('Failed to create local notification fallback for order status:', e);
-    }
+    console.warn("Supabase updateBusinessOrderStatus failed:", err);
+    throw err;
   }
 
   return getBusinessOrders(restaurantId);
@@ -1022,7 +1001,9 @@ export async function getCustomerOrders(userId: string): Promise<any[]> {
         }));
 
       const addr = o.address_id ? addressesMap[o.address_id] : null;
-      const formattedAddress = addr ? `${addr.address_line || ''}${addr.address_line2 ? ', ' + addr.address_line2 : ''}${addr.area ? ', ' + addr.area : ''}${addr.city ? ', ' + addr.city : ''}${addr.postal_code ? ' - ' + addr.postal_code : ''}` : null;
+      const formattedAddress = addr
+        ? `${addr.address_line || ''}${addr.city ? ', ' + addr.city : ''}${addr.state ? ', ' + addr.state : ''}${addr.postal_code ? ' - ' + addr.postal_code : ''}`
+        : null;
 
       return {
         id: o.id,
