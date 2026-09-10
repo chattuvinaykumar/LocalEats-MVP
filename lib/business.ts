@@ -553,165 +553,75 @@ export async function deleteBusinessMenuItem(restaurantId: string, itemId: strin
 
 // Get merchant orders
 export async function getBusinessOrders(restaurantId: string): Promise<MerchantOrder[]> {
-  let localOrders: MerchantOrder[] | null = null;
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`);
-    if (stored) {
-      try {
-        localOrders = JSON.parse(stored);
-      } catch {
-        localOrders = null;
-      }
-    }
-  }
-
   try {
-    // 1. Try querying Supabase first
     const { data: ordersData, error: ordersError } = await supabase
       .from('orders')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
 
-    if (ordersData && !ordersError) {
-      if (ordersData.length === 0 && localOrders) {
-        return localOrders;
-      }
-
-      const orderIds = ordersData.map(o => o.id);
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('order_items')
-        .select('*')
-        .in('order_id', orderIds);
-
-      if (itemsData && !itemsError) {
-        const mappedOrders = ordersData.map(o => {
-          const associatedItems = itemsData
-            .filter(item => item.order_id === o.id)
-            .map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              price: Number(item.price)
-            }));
-
-          return {
-            id: o.id,
-            restaurantId: o.restaurant_id,
-            customerName: o.customer_name,
-            items: associatedItems,
-            totalPrice: Number(o.total_price),
-            status: o.status as any,
-            createdAt: o.created_at,
-            paymentMethod: o.payment_method || 'COD',
-            paymentStatus: o.payment_status || 'pending',
-            transactionId: o.transaction_id || ''
-          };
-        });
-        return mappedOrders;
-      }
+    if (ordersError) {
+      throw ordersError;
     }
+
+    if (!ordersData || ordersData.length === 0) {
+      return [];
+    }
+
+    const orderIds = ordersData.map(o => o.id);
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('order_items')
+      .select('*')
+      .in('order_id', orderIds);
+
+    if (itemsError) {
+      throw itemsError;
+    }
+
+    const mappedOrders = ordersData.map(o => {
+      const associatedItems = (itemsData || [])
+        .filter(item => item.order_id === o.id)
+        .map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: Number(item.price)
+        }));
+
+      return {
+        id: o.id,
+        restaurantId: o.restaurant_id,
+        customerName: o.customer_name,
+        items: associatedItems,
+        totalPrice: Number(o.total_price),
+        status: o.status as any,
+        createdAt: o.created_at,
+        paymentMethod: o.payment_method || 'COD',
+        paymentStatus: o.payment_status || 'pending',
+        transactionId: o.transaction_id || ''
+      };
+    });
+
+    return mappedOrders;
   } catch (err) {
-    console.warn("Supabase getBusinessOrders failed, trying local storage:", err);
+    console.warn('Supabase getBusinessOrders failed:', err);
+    return [];
   }
-
-  if (localOrders) {
-    return localOrders;
-  }
-
-  // Seed default orders to make empty state feel interactive & gorgeous!
-  const defaultOrders: MerchantOrder[] = [
-    {
-      id: 'ord-3021',
-      restaurantId,
-      customerName: 'Vinay Kumar',
-      items: [
-        { name: 'Special Chicken Biryani', quantity: 2, price: 250 },
-        { name: 'Cold Beverage', quantity: 2, price: 40 }
-      ],
-      totalPrice: 580,
-      status: 'pending',
-      createdAt: new Date(Date.now() - 5 * 60000).toISOString() // 5 mins ago
-    },
-    {
-      id: 'ord-2984',
-      restaurantId,
-      customerName: 'Aishwarya Sen',
-      items: [
-        { name: 'Paneer Butter Masala', quantity: 1, price: 280 },
-        { name: 'Butter Naan', quantity: 3, price: 60 }
-      ],
-      totalPrice: 460,
-      status: 'preparing',
-      createdAt: new Date(Date.now() - 22 * 60000).toISOString() // 22 mins ago
-    },
-    {
-      id: 'ord-2891',
-      restaurantId,
-      customerName: 'Mohammed Ali',
-      items: [
-        { name: 'Double Ka Meetha', quantity: 2, price: 120 }
-      ],
-      totalPrice: 240,
-      status: 'delivered',
-      createdAt: new Date(Date.now() - 120 * 60000).toISOString() // 2 hours ago
-    }
-  ];
-
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`, JSON.stringify(defaultOrders));
-  }
-
-  return defaultOrders;
 }
 
 // Update order status
 export async function updateBusinessOrderStatus(restaurantId: string, orderId: string, status: MerchantOrder['status']): Promise<MerchantOrder[]> {
-  // Update in local storage
-  if (typeof window !== 'undefined') {
-    // Update merchant order key
-    const merchantStored = localStorage.getItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`);
-    if (merchantStored) {
-      const orders = JSON.parse(merchantStored) as MerchantOrder[];
-      const exists = orders.find(o => o.id === orderId);
-      if (exists) {
-        exists.status = status;
-        localStorage.setItem(`${LOCAL_STORAGE_ORDERS_KEY}${restaurantId}`, JSON.stringify(orders));
-      }
-    }
-
-    // Also update in ALL customer order keys if possible, or just update the current active user key!
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY)) {
-          const custStored = localStorage.getItem(key);
-          if (custStored) {
-            const custOrders = JSON.parse(custStored);
-            const foundIdx = custOrders.findIndex((o: any) => o.id === orderId);
-            if (foundIdx > -1) {
-              custOrders[foundIdx].status = status;
-              localStorage.setItem(key, JSON.stringify(custOrders));
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Scan adjust customer orders status failed:", e);
-    }
-  }
-
-  // Update in Supabase
   try {
     const { error } = await supabase
       .from('orders')
-      .update({ status: status })
-      .eq('id', orderId);
+      .update({ status })
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId);
 
     if (error) {
-      console.warn("Supabase order update failed:", error.message);
+      throw error;
     }
+
     try {
-      // Notify customer about status change
       const { data: ord } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
       if (ord && ord.user_id) {
         await createNotification(ord.user_id, {
@@ -727,38 +637,8 @@ export async function updateBusinessOrderStatus(restaurantId: string, orderId: s
       console.warn('Failed to create status-change notification:', nErr);
     }
   } catch (err) {
-    console.warn("Supabase updateBusinessOrderStatus failed (fallback active):", err);
-    // Even if Supabase update fails (RLS), still attempt to create a notification via local fallback so customers see updates in demo
-    try {
-      // Try to determine user id from stored local orders if possible
-      let userId: string | null = null;
-      if (typeof window !== 'undefined') {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY)) {
-            const custOrders = JSON.parse(localStorage.getItem(key) || '[]');
-            const found = (custOrders || []).find((o: any) => o.id === orderId);
-            if (found) {
-              userId = key.replace(LOCAL_STORAGE_CUSTOMER_ORDERS_KEY, '');
-              break;
-            }
-          }
-        }
-      }
-      const notifUser = userId || null;
-      if (notifUser) {
-        await createNotification(notifUser, {
-          id: `notif-${orderId}-status-${Date.now()}`,
-          title: `Order ${orderId} is ${status}`,
-          message: `Your order ${orderId} status has been updated to ${status}.`,
-          category: 'order',
-          related_entity: 'orders',
-          related_id: orderId
-        });
-      }
-    } catch (e) {
-      console.warn('Failed to create local notification fallback for order status:', e);
-    }
+    console.warn('Supabase updateBusinessOrderStatus failed:', err);
+    throw err;
   }
 
   return getBusinessOrders(restaurantId);
@@ -996,93 +876,79 @@ export async function placeOrder(
 
 // Customers can get their orders
 export async function getCustomerOrders(userId: string): Promise<any[]> {
-  let localOrders: any[] | null = null;
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem(`${LOCAL_STORAGE_CUSTOMER_ORDERS_KEY}${userId}`);
-    if (stored) {
-      try {
-        localOrders = JSON.parse(stored);
-      } catch {
-        localOrders = null;
-      }
-    }
-  }
-
   try {
-    // Try fetching from Supabase
     const { data: ordersData, error: ordersError } = await supabase
       .from('orders')
       .select('*, restaurants(name)')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (ordersData && !ordersError) {
-      if (ordersData.length === 0 && localOrders) {
-        return localOrders;
-      }
+    if (ordersError) {
+      throw ordersError;
+    }
 
-      const orderIds = ordersData.map(o => o.id);
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('order_items')
-        .select('*')
-        .in('order_id', orderIds);
+    if (!ordersData || ordersData.length === 0) {
+      return [];
+    }
 
-      // Also fetch any referenced addresses so we can show delivery address in UI
-      const addressIds = Array.from(new Set(ordersData.map((o: any) => o.address_id).filter(Boolean)));
-      let addressesMap: Record<string, any> = {};
-      if (addressIds.length > 0) {
-        try {
-          const { data: addrData } = await supabase.from('addresses').select('*').in('id', addressIds);
-          if (addrData) {
-            addressesMap = addrData.reduce((acc: any, a: any) => ({ ...acc, [a.id]: a }), {});
-          }
-        } catch (e) {
-          console.warn('Failed to fetch order addresses:', e);
+    const orderIds = ordersData.map(o => o.id);
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('order_items')
+      .select('*')
+      .in('order_id', orderIds);
+
+    if (itemsError) {
+      throw itemsError;
+    }
+
+    const addressIds = Array.from(new Set(ordersData.map((o: any) => o.address_id).filter(Boolean)));
+    let addressesMap: Record<string, any> = {};
+    if (addressIds.length > 0) {
+      try {
+        const { data: addrData } = await supabase.from('addresses').select('*').in('id', addressIds);
+        if (addrData) {
+          addressesMap = addrData.reduce((acc: any, a: any) => ({ ...acc, [a.id]: a }), {});
         }
-      }
-
-      if (itemsData && !itemsError) {
-        const mappedOrders = ordersData.map(o => {
-          const associatedItems = itemsData
-            .filter(item => item.order_id === o.id)
-            .map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              price: Number(item.price)
-            }));
-
-          const addr = o.address_id ? addressesMap[o.address_id] : null;
-          const formattedAddress = addr ? `${addr.address_line || ''}${addr.address_line2 ? ', ' + addr.address_line2 : ''}${addr.area ? ', ' + addr.area : ''}${addr.city ? ', ' + addr.city : ''}${addr.postal_code ? ' - ' + addr.postal_code : ''}` : null;
-
-          return {
-            id: o.id,
-            restaurantId: o.restaurant_id,
-            restaurantName: o.restaurants?.name || 'Local Restaurant',
-            customerName: o.customer_name,
-            items: associatedItems,
-            totalPrice: Number(o.total_price),
-            status: o.status,
-            createdAt: o.created_at,
-            userId: o.user_id,
-            paymentMethod: o.payment_method || 'COD',
-            paymentStatus: o.payment_status || 'pending',
-            transactionId: o.transaction_id || '',
-            address: formattedAddress,
-            addressId: o.address_id || null
-          };
-        });
-        return mappedOrders;
+      } catch (e) {
+        console.warn('Failed to fetch order addresses:', e);
       }
     }
+
+    const mappedOrders = ordersData.map(o => {
+      const associatedItems = (itemsData || [])
+        .filter(item => item.order_id === o.id)
+        .map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: Number(item.price)
+        }));
+
+      const addr = o.address_id ? addressesMap[o.address_id] : null;
+      const formattedAddress = addr ? `${addr.address_line || ''}${addr.address_line2 ? ', ' + addr.address_line2 : ''}${addr.area ? ', ' + addr.area : ''}${addr.city ? ', ' + addr.city : ''}${addr.postal_code ? ' - ' + addr.postal_code : ''}` : null;
+
+      return {
+        id: o.id,
+        restaurantId: o.restaurant_id,
+        restaurantName: o.restaurants?.name || 'Local Restaurant',
+        customerName: o.customer_name,
+        items: associatedItems,
+        totalPrice: Number(o.total_price),
+        status: o.status,
+        createdAt: o.created_at,
+        userId: o.user_id,
+        paymentMethod: o.payment_method || 'COD',
+        paymentStatus: o.payment_status || 'pending',
+        transactionId: o.transaction_id || '',
+        address: formattedAddress,
+        addressId: o.address_id || null
+      };
+    });
+
+    return mappedOrders;
   } catch (err) {
-    console.warn("Supabase getCustomerOrders failed, trying local storage:", err);
+    console.warn('Supabase getCustomerOrders failed:', err);
+    return [];
   }
-
-  if (localOrders) {
-    return localOrders;
-  }
-
-  return [];
 }
 
 // --- OFFERS & PROMOTIONS SYSTEM EXPORTS ---
