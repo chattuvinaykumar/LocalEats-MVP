@@ -189,37 +189,15 @@ export async function createNotification(userId: string, payload: any) {
       related_id: payload.related_id || null,
       read: false
     };
+
     const { error } = await supabase.from('notifications').insert(row);
     if (error) {
-      // Fall back to localStorage so demo users still see notifications even when RLS blocks server writes
-      try {
-        if (typeof window !== 'undefined') {
-          const key = 'localeats_notifications';
-          const stored = localStorage.getItem(key);
-          let arr = stored ? JSON.parse(stored) : [];
-          arr = [{ id: row.id, title: row.title, message: row.message, timestamp: 'Just now', read: false }, ...arr];
-          localStorage.setItem(key, JSON.stringify(arr));
-          try { localStorage.setItem('notifications_updated', String(Date.now())); } catch (e) {}
-        }
-      } catch (e) { console.warn('Local fallback for notification failed', e); }
-      return row;
+      throw error;
     }
+
     return row;
   } catch (e) {
     console.warn('createNotification failed:', e);
-    // local fallback
-    try {
-      if (typeof window !== 'undefined') {
-        const key = 'localeats_notifications';
-        const stored = localStorage.getItem(key);
-        let arr = stored ? JSON.parse(stored) : [];
-        const id = payload.id || `notif-${Date.now()}`;
-        arr = [{ id, title: payload.title, message: payload.message, timestamp: 'Just now', read: false }, ...arr];
-        localStorage.setItem(key, JSON.stringify(arr));
-        try { localStorage.setItem('notifications_updated', String(Date.now())); } catch (e) {}
-        return { id, user_id: userId, title: payload.title, message: payload.message };
-      }
-    } catch (e2) { console.warn('Local fallback failed too', e2); }
     throw e;
   }
 }
